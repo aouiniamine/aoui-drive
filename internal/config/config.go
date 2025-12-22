@@ -6,10 +6,11 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Env      string
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	JWTSecret string
+	Env       string
 }
 
 type ServerConfig struct {
@@ -43,7 +44,8 @@ func Load() *Config {
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
-		Env: getEnv("ENV", "development"),
+		JWTSecret: getEnv("JWT_SECRET", "change-me-in-production"),
+		Env:       getEnv("ENV", "development"),
 	}
 }
 

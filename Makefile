@@ -1,4 +1,4 @@
-.PHONY: build run dev watch test clean docker-up docker-down tidy sqlc
+.PHONY: build run dev watch test clean docker-up docker-down tidy sqlc create-client
 
 APP_NAME := aoui-drive
 BUILD_DIR := ./bin
@@ -43,6 +43,9 @@ lint:
 
 sqlc:
 	@go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
+
+create-client:
+	@go run ./cmd/create-client -name="$(NAME)" -role="$(ROLE)"
 
 setup: docker-up sqlc tidy
 	@cp -n .env.example .env 2>/dev/null || true

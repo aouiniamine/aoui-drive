@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 
+	"github.com/aouiniamine/aoui-drive/internal/features/health/dto"
 	"github.com/aouiniamine/aoui-drive/internal/features/health/service"
 	"github.com/aouiniamine/aoui-drive/pkg/response"
 	"github.com/labstack/echo/v4"
@@ -24,9 +25,7 @@ func (h *HealthController) RegisterRoutes(e *echo.Echo) {
 }
 
 func (h *HealthController) Health(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{
-		"status": "ok",
-	})
+	return c.JSON(http.StatusOK, dto.HealthResponse{Status: "ok"})
 }
 
 func (h *HealthController) Ready(c echo.Context) error {

@@ -5,15 +5,11 @@ import (
 
 	"github.com/aouiniamine/aoui-drive/internal/cache"
 	"github.com/aouiniamine/aoui-drive/internal/database"
+	"github.com/aouiniamine/aoui-drive/internal/features/health/dto"
 )
 
 type HealthService interface {
-	Check(ctx context.Context) (*HealthStatus, error)
-}
-
-type HealthStatus struct {
-	Status   string            `json:"status"`
-	Services map[string]string `json:"services"`
+	Check(ctx context.Context) (*dto.ReadyResponse, error)
 }
 
 type healthService struct {
@@ -28,8 +24,8 @@ func New(db *database.Database, cache *cache.Redis) HealthService {
 	}
 }
 
-func (s *healthService) Check(ctx context.Context) (*HealthStatus, error) {
-	status := &HealthStatus{
+func (s *healthService) Check(ctx context.Context) (*dto.ReadyResponse, error) {
+	status := &dto.ReadyResponse{
 		Status:   "healthy",
 		Services: make(map[string]string),
 	}

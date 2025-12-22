@@ -11,6 +11,7 @@ import (
 	"github.com/aouiniamine/aoui-drive/internal/cache"
 	"github.com/aouiniamine/aoui-drive/internal/config"
 	"github.com/aouiniamine/aoui-drive/internal/database"
+	"github.com/aouiniamine/aoui-drive/internal/features/auth"
 	"github.com/aouiniamine/aoui-drive/internal/features/health"
 	"github.com/aouiniamine/aoui-drive/internal/server"
 	"github.com/joho/godotenv"
@@ -48,6 +49,9 @@ func main() {
 
 	healthFeature := health.New(db, redisCache)
 	healthFeature.RegisterRoutes(srv.Echo())
+
+	authFeature := auth.New(db, cfg.JWTSecret)
+	authFeature.RegisterRoutes(srv.Echo())
 
 	go func() {
 		log.Printf("Starting server on %s:%s", cfg.Server.Host, cfg.Server.Port)

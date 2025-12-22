@@ -8,6 +8,17 @@ import (
 	"database/sql"
 )
 
+type Client struct {
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	AccessKey string       `json:"access_key"`
+	SecretKey string       `json:"secret_key"`
+	Role      string       `json:"role"`
+	IsActive  int64        `json:"is_active"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
+}
+
 type SchemaMigration struct {
 	Version   int64        `json:"version"`
 	AppliedAt sql.NullTime `json:"applied_at"`
