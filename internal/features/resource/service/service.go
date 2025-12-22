@@ -98,6 +98,7 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, 
 			Hash:        existing.Hash,
 			Size:        existing.Size,
 			ContentType: existing.ContentType,
+			Extension:   existing.Extension,
 			CreatedAt:   existing.CreatedAt.Time,
 		}
 		if bucket.IsPublic == 1 {
@@ -136,6 +137,7 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, 
 		Hash:        resource.Hash,
 		Size:        resource.Size,
 		ContentType: resource.ContentType,
+		Extension:   resource.Extension,
 		CreatedAt:   resource.CreatedAt.Time,
 	}
 	if bucket.IsPublic == 1 {
@@ -190,6 +192,7 @@ func (s *resourceService) Download(ctx context.Context, clientID, bucketID, hash
 		Hash:        resource.Hash,
 		Size:        resource.Size,
 		ContentType: resource.ContentType,
+		Extension:   resource.Extension,
 		CreatedAt:   resource.CreatedAt.Time,
 	}
 	if bucket.IsPublic == 1 {
@@ -219,6 +222,7 @@ func (s *resourceService) Get(ctx context.Context, clientID, bucketID, hash stri
 		Hash:        resource.Hash,
 		Size:        resource.Size,
 		ContentType: resource.ContentType,
+		Extension:   resource.Extension,
 		CreatedAt:   resource.CreatedAt.Time,
 	}
 	if bucket.IsPublic == 1 {
@@ -253,6 +257,7 @@ func (s *resourceService) List(ctx context.Context, clientID, bucketID string) (
 			Hash:        r.Hash,
 			Size:        r.Size,
 			ContentType: r.ContentType,
+			Extension:   r.Extension,
 			CreatedAt:   r.CreatedAt.Time,
 		}
 		if bucket.IsPublic == 1 {

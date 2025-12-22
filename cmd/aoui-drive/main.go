@@ -17,6 +17,7 @@ import (
 	"github.com/aouiniamine/aoui-drive/internal/features/bucket"
 	"github.com/aouiniamine/aoui-drive/internal/features/health"
 	"github.com/aouiniamine/aoui-drive/internal/features/resource"
+	"github.com/aouiniamine/aoui-drive/internal/features/ui"
 	"github.com/aouiniamine/aoui-drive/internal/middleware"
 	"github.com/aouiniamine/aoui-drive/internal/server"
 	"github.com/joho/godotenv"
@@ -87,6 +88,10 @@ func main() {
 	resourceFeature := resource.New(db, bucketFeature.Repository, cfg.Storage.Path, cfg.Storage.PublicURL)
 	resourceGroup := srv.Echo().Group("/resources", middleware.Auth(authFeature.Service))
 	resourceFeature.RegisterRoutes(resourceGroup)
+
+	// UI Feature (web interface)
+	uiFeature := ui.New(authFeature.Service, bucketFeature.Service, resourceFeature.Service, cfg.Storage.PublicURL)
+	uiFeature.RegisterRoutes(srv.Echo())
 
 	// Serve public files with caching headers
 	publicPath := cfg.Storage.Path + "/public"

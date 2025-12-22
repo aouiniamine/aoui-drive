@@ -9,6 +9,7 @@ type ResourceResponse struct {
 	Hash        string    `json:"hash"`
 	Size        int64     `json:"size"`
 	ContentType string    `json:"content_type"`
+	Extension   string    `json:"extension"`
 	CreatedAt   time.Time `json:"created_at"`
 	PublicURL   string    `json:"public_url,omitempty"`
 }
