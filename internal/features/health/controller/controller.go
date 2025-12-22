@@ -24,10 +24,25 @@ func (h *HealthController) RegisterRoutes(e *echo.Echo) {
 	e.GET("/ready", h.Ready)
 }
 
+// Health godoc
+// @Summary Health check
+// @Description Basic health check endpoint
+// @Tags health
+// @Produce json
+// @Success 200 {object} dto.HealthResponse
+// @Router /health [get]
 func (h *HealthController) Health(c echo.Context) error {
 	return c.JSON(http.StatusOK, dto.HealthResponse{Status: "ok"})
 }
 
+// Ready godoc
+// @Summary Readiness check
+// @Description Check if the service and its dependencies are ready
+// @Tags health
+// @Produce json
+// @Success 200 {object} response.Response{data=dto.ReadyResponse}
+// @Failure 503 {object} dto.ReadyResponse
+// @Router /ready [get]
 func (h *HealthController) Ready(c echo.Context) error {
 	status, err := h.service.Check(c.Request().Context())
 	if err != nil {

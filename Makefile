@@ -1,4 +1,4 @@
-.PHONY: build run dev watch test clean docker-up docker-down tidy sqlc create-client
+.PHONY: build run dev watch test clean docker-up docker-down tidy sqlc create-client swagger
 
 APP_NAME := aoui-drive
 BUILD_DIR := ./bin
@@ -47,7 +47,10 @@ sqlc:
 create-client:
 	@go run ./cmd/create-client -name="$(NAME)" -role="$(ROLE)"
 
-setup: docker-up sqlc tidy
+swagger:
+	@go run github.com/swaggo/swag/cmd/swag@latest init -g cmd/aoui-drive/main.go -o docs
+
+setup: docker-up sqlc tidy swagger
 	@cp -n .env.example .env 2>/dev/null || true
 	@mkdir -p data
 	@echo "Setup complete! Run 'make dev' to start the server."

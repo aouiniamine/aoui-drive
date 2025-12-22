@@ -8,6 +8,15 @@ import (
 	"database/sql"
 )
 
+type Bucket struct {
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	ClientID  string       `json:"client_id"`
+	IsPublic  int64        `json:"is_public"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
+}
+
 type Client struct {
 	ID        string       `json:"id"`
 	Name      string       `json:"name"`
@@ -17,6 +26,15 @@ type Client struct {
 	IsActive  int64        `json:"is_active"`
 	CreatedAt sql.NullTime `json:"created_at"`
 	UpdatedAt sql.NullTime `json:"updated_at"`
+}
+
+type Resource struct {
+	ID          string       `json:"id"`
+	BucketID    string       `json:"bucket_id"`
+	Hash        string       `json:"hash"`
+	Size        int64        `json:"size"`
+	ContentType string       `json:"content_type"`
+	CreatedAt   sql.NullTime `json:"created_at"`
 }
 
 type SchemaMigration struct {

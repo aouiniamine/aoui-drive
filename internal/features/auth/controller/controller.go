@@ -26,6 +26,18 @@ func (c *AuthController) RegisterRoutes(e *echo.Echo, authMiddleware, adminMiddl
 	admin.POST("/clients/:id/regenerate-secret", c.RegenerateSecret)
 }
 
+// Login godoc
+// @Summary Authenticate client
+// @Description Login with access key and secret key to get JWT token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body dto.LoginRequest true "Login credentials"
+// @Success 200 {object} response.Response{data=dto.TokenResponse}
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Router /auth/login [post]
 func (c *AuthController) Login(ctx echo.Context) error {
 	var req dto.LoginRequest
 	if err := ctx.Bind(&req); err != nil {
@@ -50,6 +62,19 @@ func (c *AuthController) Login(ctx echo.Context) error {
 	return response.Success(ctx, token)
 }
 
+// CreateClient godoc
+// @Summary Create a new client
+// @Description Create a new client with access credentials (Admin only)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body dto.CreateClientRequest true "Client details"
+// @Success 201 {object} response.Response{data=dto.ClientResponse}
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Router /admin/clients [post]
 func (c *AuthController) CreateClient(ctx echo.Context) error {
 	var req dto.CreateClientRequest
 	if err := ctx.Bind(&req); err != nil {
@@ -79,6 +104,19 @@ func (c *AuthController) CreateClient(ctx echo.Context) error {
 	return response.Created(ctx, client)
 }
 
+// RegenerateSecret godoc
+// @Summary Regenerate client secret
+// @Description Regenerate the secret key for a client (Admin only)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Client ID"
+// @Success 200 {object} response.Response{data=dto.SecretResponse}
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Failure 404 {object} response.Response
+// @Router /admin/clients/{id}/regenerate-secret [post]
 func (c *AuthController) RegenerateSecret(ctx echo.Context) error {
 	id := ctx.Param("id")
 

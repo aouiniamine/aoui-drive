@@ -8,14 +8,39 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/aouiniamine/aoui-drive/docs"
+
 	"github.com/aouiniamine/aoui-drive/internal/cache"
 	"github.com/aouiniamine/aoui-drive/internal/config"
 	"github.com/aouiniamine/aoui-drive/internal/database"
 	"github.com/aouiniamine/aoui-drive/internal/features/auth"
+	"github.com/aouiniamine/aoui-drive/internal/features/bucket"
 	"github.com/aouiniamine/aoui-drive/internal/features/health"
+	"github.com/aouiniamine/aoui-drive/internal/features/resource"
+	"github.com/aouiniamine/aoui-drive/internal/middleware"
 	"github.com/aouiniamine/aoui-drive/internal/server"
 	"github.com/joho/godotenv"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
+
+// @title AOUI Drive API
+// @version 1.0
+// @description MinIO-like Object Storage API
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.email support@aoui-drive.io
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter your bearer token in the format: Bearer <token>
 
 func main() {
 	if err := godotenv.Load(); err != nil {
@@ -47,11 +72,21 @@ func main() {
 
 	srv := server.New(cfg, db, redisCache)
 
+	srv.Echo().GET("/swagger/*", echoSwagger.WrapHandler)
+
 	healthFeature := health.New(db, redisCache)
 	healthFeature.RegisterRoutes(srv.Echo())
 
 	authFeature := auth.New(db, cfg.JWTSecret)
 	authFeature.RegisterRoutes(srv.Echo())
+
+	bucketFeature := bucket.New(db, cfg.Storage.Path)
+	bucketGroup := srv.Echo().Group("/buckets", middleware.Auth(authFeature.Service))
+	bucketFeature.RegisterRoutes(bucketGroup)
+
+	resourceFeature := resource.New(db, bucketFeature.Repository, cfg.Storage.Path)
+	resourceGroup := srv.Echo().Group("/resources", middleware.Auth(authFeature.Service))
+	resourceFeature.RegisterRoutes(resourceGroup)
 
 	go func() {
 		log.Printf("Starting server on %s:%s", cfg.Server.Host, cfg.Server.Port)
