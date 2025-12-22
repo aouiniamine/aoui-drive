@@ -32,27 +32,34 @@ func (c *ResourceController) RegisterRoutes(g *echo.Group) {
 
 // UploadStream godoc
 // @Summary Upload resource via stream
-// @Description Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication.
+// @Description Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., ".jpg", ".log").
 // @Tags resources
 // @Accept */*
 // @Produce json
 // @Security BearerAuth
-// @Param bucket path string true "Bucket name"
+// @Param bucket path string true "Bucket ID"
+// @Param X-File-Extension header string true "File extension (e.g., .jpg, .log)"
 // @Param file body string true "File content" format(binary)
 // @Success 200 {object} response.Response{data=dto.ResourceResponse}
+// @Failure 400 {object} response.Response
 // @Failure 401 {object} response.Response
 // @Failure 404 {object} response.Response
 // @Router /resources/{bucket} [put]
 func (c *ResourceController) UploadStream(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	bucketName := ctx.Param("bucket")
+	bucketID := ctx.Param("bucket")
 
 	contentType := ctx.Request().Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
-	resource, err := c.service.UploadStream(ctx.Request().Context(), clientID, bucketName, contentType, ctx.Request().Body)
+	extension := ctx.Request().Header.Get("X-File-Extension")
+	if extension == "" {
+		return response.BadRequest(ctx, "X-File-Extension header is required")
+	}
+
+	resource, err := c.service.UploadStream(ctx.Request().Context(), clientID, bucketID, contentType, extension, ctx.Request().Body)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -70,7 +77,7 @@ func (c *ResourceController) UploadStream(ctx echo.Context) error {
 // @Accept multipart/form-data
 // @Produce json
 // @Security BearerAuth
-// @Param bucket path string true "Bucket name"
+// @Param bucket path string true "Bucket ID"
 // @Param file formData file true "File to upload"
 // @Success 200 {object} response.Response{data=dto.ResourceResponse}
 // @Failure 400 {object} response.Response
@@ -79,14 +86,14 @@ func (c *ResourceController) UploadStream(ctx echo.Context) error {
 // @Router /resources/{bucket} [post]
 func (c *ResourceController) UploadFile(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	bucketName := ctx.Param("bucket")
+	bucketID := ctx.Param("bucket")
 
 	file, err := ctx.FormFile("file")
 	if err != nil {
 		return response.BadRequest(ctx, "file is required")
 	}
 
-	resource, err := c.service.UploadFile(ctx.Request().Context(), clientID, bucketName, file)
+	resource, err := c.service.UploadFile(ctx.Request().Context(), clientID, bucketID, file)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -103,7 +110,7 @@ func (c *ResourceController) UploadFile(ctx echo.Context) error {
 // @Tags resources
 // @Produce application/octet-stream
 // @Security BearerAuth
-// @Param bucket path string true "Bucket name"
+// @Param bucket path string true "Bucket ID"
 // @Param hash path string true "Resource hash (SHA-256)"
 // @Success 200 {file} binary
 // @Failure 401 {object} response.Response
@@ -111,10 +118,10 @@ func (c *ResourceController) UploadFile(ctx echo.Context) error {
 // @Router /resources/{bucket}/{hash} [get]
 func (c *ResourceController) Download(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	bucketName := ctx.Param("bucket")
+	bucketID := ctx.Param("bucket")
 	hash := ctx.Param("hash")
 
-	reader, resource, err := c.service.Download(ctx.Request().Context(), clientID, bucketName, hash)
+	reader, resource, err := c.service.Download(ctx.Request().Context(), clientID, bucketID, hash)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -138,7 +145,7 @@ func (c *ResourceController) Download(ctx echo.Context) error {
 // @Tags resources
 // @Produce json
 // @Security BearerAuth
-// @Param bucket path string true "Bucket name"
+// @Param bucket path string true "Bucket ID"
 // @Param hash path string true "Resource hash (SHA-256)"
 // @Success 200 {header} string X-Resource-Hash "Resource hash"
 // @Success 200 {header} string Content-Type "Resource content type"
@@ -148,10 +155,10 @@ func (c *ResourceController) Download(ctx echo.Context) error {
 // @Router /resources/{bucket}/{hash} [head]
 func (c *ResourceController) Head(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	bucketName := ctx.Param("bucket")
+	bucketID := ctx.Param("bucket")
 	hash := ctx.Param("hash")
 
-	resource, err := c.service.Get(ctx.Request().Context(), clientID, bucketName, hash)
+	resource, err := c.service.Get(ctx.Request().Context(), clientID, bucketID, hash)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -175,16 +182,16 @@ func (c *ResourceController) Head(ctx echo.Context) error {
 // @Tags resources
 // @Produce json
 // @Security BearerAuth
-// @Param bucket path string true "Bucket name"
+// @Param bucket path string true "Bucket ID"
 // @Success 200 {object} response.Response{data=dto.ResourceListResponse}
 // @Failure 401 {object} response.Response
 // @Failure 404 {object} response.Response
 // @Router /resources/{bucket} [get]
 func (c *ResourceController) List(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	bucketName := ctx.Param("bucket")
+	bucketID := ctx.Param("bucket")
 
-	resources, err := c.service.List(ctx.Request().Context(), clientID, bucketName)
+	resources, err := c.service.List(ctx.Request().Context(), clientID, bucketID)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -201,7 +208,7 @@ func (c *ResourceController) List(ctx echo.Context) error {
 // @Tags resources
 // @Produce json
 // @Security BearerAuth
-// @Param bucket path string true "Bucket name"
+// @Param bucket path string true "Bucket ID"
 // @Param hash path string true "Resource hash (SHA-256)"
 // @Success 204
 // @Failure 401 {object} response.Response
@@ -209,10 +216,10 @@ func (c *ResourceController) List(ctx echo.Context) error {
 // @Router /resources/{bucket}/{hash} [delete]
 func (c *ResourceController) Delete(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	bucketName := ctx.Param("bucket")
+	bucketID := ctx.Param("bucket")
 	hash := ctx.Param("hash")
 
-	if err := c.service.Delete(ctx.Request().Context(), clientID, bucketName, hash); err != nil {
+	if err := c.service.Delete(ctx.Request().Context(), clientID, bucketID, hash); err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
 		}

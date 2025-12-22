@@ -17,9 +17,9 @@ var bucketNameRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 
 type BucketService interface {
 	Create(ctx context.Context, clientID string, req dto.CreateBucketRequest) (*dto.BucketResponse, error)
-	Get(ctx context.Context, clientID, name string) (*dto.BucketResponse, error)
+	Get(ctx context.Context, clientID, bucketID string) (*dto.BucketResponse, error)
 	List(ctx context.Context, clientID string) (*dto.BucketListResponse, error)
-	Delete(ctx context.Context, clientID, name string) error
+	Delete(ctx context.Context, clientID, bucketID string) error
 }
 
 type bucketService struct {
@@ -79,10 +79,15 @@ func (s *bucketService) Create(ctx context.Context, clientID string, req dto.Cre
 	}, nil
 }
 
-func (s *bucketService) Get(ctx context.Context, clientID, name string) (*dto.BucketResponse, error) {
-	bucket, err := s.repo.GetByNameAndClientID(ctx, name, clientID)
+func (s *bucketService) Get(ctx context.Context, clientID, bucketID string) (*dto.BucketResponse, error) {
+	bucket, err := s.repo.GetByID(ctx, bucketID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return nil, repository.ErrBucketNotFound
 	}
 
 	return &dto.BucketResponse{
@@ -115,21 +120,26 @@ func (s *bucketService) List(ctx context.Context, clientID string) (*dto.BucketL
 	return response, nil
 }
 
-func (s *bucketService) Delete(ctx context.Context, clientID, name string) error {
-	bucket, err := s.repo.GetByNameAndClientID(ctx, name, clientID)
+func (s *bucketService) Delete(ctx context.Context, clientID, bucketID string) error {
+	bucket, err := s.repo.GetByID(ctx, bucketID)
 	if err != nil {
 		return err
 	}
 
-	bucketPath := filepath.Join(s.storagePath, bucket.ID)
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return repository.ErrBucketNotFound
+	}
 
-	if err := s.repo.Delete(ctx, bucket.ID); err != nil {
+	bucketPath := filepath.Join(s.storagePath, bucketID)
+
+	if err := s.repo.Delete(ctx, bucketID); err != nil {
 		return err
 	}
 
 	// Remove public symlink if bucket was public
 	if bucket.IsPublic == 1 {
-		s.removePublicSymlink(bucket.ID)
+		s.removePublicSymlink(bucketID)
 	}
 
 	os.RemoveAll(bucketPath)

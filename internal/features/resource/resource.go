@@ -14,9 +14,9 @@ type Feature struct {
 	Service    service.ResourceService
 }
 
-func New(db *database.Database, bucketRepo bucketrepo.BucketRepository, storagePath string) *Feature {
+func New(db *database.Database, bucketRepo bucketrepo.BucketRepository, storagePath, publicURL string) *Feature {
 	repo := repository.New(db.Queries)
-	svc := service.New(repo, bucketRepo, storagePath)
+	svc := service.New(repo, bucketRepo, storagePath, publicURL)
 	ctrl := controller.New(svc)
 
 	return &Feature{

@@ -84,9 +84,13 @@ func main() {
 	bucketGroup := srv.Echo().Group("/buckets", middleware.Auth(authFeature.Service))
 	bucketFeature.RegisterRoutes(bucketGroup)
 
-	resourceFeature := resource.New(db, bucketFeature.Repository, cfg.Storage.Path)
+	resourceFeature := resource.New(db, bucketFeature.Repository, cfg.Storage.Path, cfg.Storage.PublicURL)
 	resourceGroup := srv.Echo().Group("/resources", middleware.Auth(authFeature.Service))
 	resourceFeature.RegisterRoutes(resourceGroup)
+
+	// Serve public files with caching headers
+	publicPath := cfg.Storage.Path + "/public"
+	srv.Echo().Static("/public", publicPath)
 
 	go func() {
 		log.Printf("Starting server on %s:%s", cfg.Server.Host, cfg.Server.Port)

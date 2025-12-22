@@ -10,6 +10,7 @@ type ResourceResponse struct {
 	Size        int64     `json:"size"`
 	ContentType string    `json:"content_type"`
 	CreatedAt   time.Time `json:"created_at"`
+	PublicURL   string    `json:"public_url,omitempty"`
 }
 
 type ResourceListResponse struct {

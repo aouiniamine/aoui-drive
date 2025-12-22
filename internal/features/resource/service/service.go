@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -18,32 +20,39 @@ import (
 )
 
 type ResourceService interface {
-	UploadStream(ctx context.Context, clientID, bucketName, contentType string, reader io.Reader) (*dto.ResourceResponse, error)
-	UploadFile(ctx context.Context, clientID, bucketName string, file *multipart.FileHeader) (*dto.ResourceResponse, error)
-	Download(ctx context.Context, clientID, bucketName, hash string) (io.ReadCloser, *dto.ResourceResponse, error)
-	Get(ctx context.Context, clientID, bucketName, hash string) (*dto.ResourceResponse, error)
-	List(ctx context.Context, clientID, bucketName string) (*dto.ResourceListResponse, error)
-	Delete(ctx context.Context, clientID, bucketName, hash string) error
+	UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader) (*dto.ResourceResponse, error)
+	UploadFile(ctx context.Context, clientID, bucketID string, file *multipart.FileHeader) (*dto.ResourceResponse, error)
+	Download(ctx context.Context, clientID, bucketID, hash string) (io.ReadCloser, *dto.ResourceResponse, error)
+	Get(ctx context.Context, clientID, bucketID, hash string) (*dto.ResourceResponse, error)
+	List(ctx context.Context, clientID, bucketID string) (*dto.ResourceListResponse, error)
+	Delete(ctx context.Context, clientID, bucketID, hash string) error
 }
 
 type resourceService struct {
 	repo        repository.ResourceRepository
 	bucketRepo  bucketrepo.BucketRepository
 	storagePath string
+	publicURL   string
 }
 
-func New(repo repository.ResourceRepository, bucketRepo bucketrepo.BucketRepository, storagePath string) ResourceService {
+func New(repo repository.ResourceRepository, bucketRepo bucketrepo.BucketRepository, storagePath, publicURL string) ResourceService {
 	return &resourceService{
 		repo:        repo,
 		bucketRepo:  bucketRepo,
 		storagePath: storagePath,
+		publicURL:   publicURL,
 	}
 }
 
-func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketName, contentType string, reader io.Reader) (*dto.ResourceResponse, error) {
-	bucket, err := s.bucketRepo.GetByNameAndClientID(ctx, bucketName, clientID)
+func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader) (*dto.ResourceResponse, error) {
+	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return nil, bucketrepo.ErrBucketNotFound
 	}
 
 	// Create temp file to compute hash while reading
@@ -67,21 +76,39 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketName
 
 	hash := hex.EncodeToString(hasher.Sum(nil))
 
+	// Use provided extension or fall back to content type
+	ext := extension
+	if ext == "" {
+		var err error
+		ext, err = getExtensionFromContentType(contentType)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if ext != "" && ext[0] != '.' {
+		ext = "." + ext
+	}
+
 	// Check if resource already exists (deduplication)
 	existing, err := s.repo.GetByBucketAndHash(ctx, bucket.ID, hash)
 	if err == nil {
 		// Resource already exists, return it
-		return &dto.ResourceResponse{
+		resp := &dto.ResourceResponse{
 			ID:          existing.ID,
 			Hash:        existing.Hash,
 			Size:        existing.Size,
 			ContentType: existing.ContentType,
 			CreatedAt:   existing.CreatedAt.Time,
-		}, nil
+		}
+		if bucket.IsPublic == 1 {
+			resp.PublicURL = s.buildPublicURL(bucket.ID, existing.Hash, existing.Extension)
+		}
+		return resp, nil
 	}
 
-	// Move temp file to final location
-	resourcePath := filepath.Join(s.storagePath, bucket.ID, hash)
+	// Move temp file to final location (with extension)
+	filename := buildFilename(hash, ext)
+	resourcePath := filepath.Join(s.storagePath, bucket.ID, filename)
 	if err := os.Rename(tempPath, resourcePath); err != nil {
 		// If rename fails (cross-device), copy instead
 		if err := copyFile(tempPath, resourcePath); err != nil {
@@ -97,22 +124,27 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketName
 		Hash:        hash,
 		Size:        size,
 		ContentType: contentType,
+		Extension:   ext,
 	})
 	if err != nil {
 		os.Remove(resourcePath)
 		return nil, fmt.Errorf("failed to create resource record: %w", err)
 	}
 
-	return &dto.ResourceResponse{
+	resp := &dto.ResourceResponse{
 		ID:          resource.ID,
 		Hash:        resource.Hash,
 		Size:        resource.Size,
 		ContentType: resource.ContentType,
 		CreatedAt:   resource.CreatedAt.Time,
-	}, nil
+	}
+	if bucket.IsPublic == 1 {
+		resp.PublicURL = s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+	}
+	return resp, nil
 }
 
-func (s *resourceService) UploadFile(ctx context.Context, clientID, bucketName string, file *multipart.FileHeader) (*dto.ResourceResponse, error) {
+func (s *resourceService) UploadFile(ctx context.Context, clientID, bucketID string, file *multipart.FileHeader) (*dto.ResourceResponse, error) {
 	src, err := file.Open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open uploaded file: %w", err)
@@ -124,62 +156,89 @@ func (s *resourceService) UploadFile(ctx context.Context, clientID, bucketName s
 		contentType = "application/octet-stream"
 	}
 
-	return s.UploadStream(ctx, clientID, bucketName, contentType, src)
+	// Extract extension from original filename
+	extension := filepath.Ext(file.Filename)
+
+	return s.UploadStream(ctx, clientID, bucketID, contentType, extension, src)
 }
 
-func (s *resourceService) Download(ctx context.Context, clientID, bucketName, hash string) (io.ReadCloser, *dto.ResourceResponse, error) {
-	bucket, err := s.bucketRepo.GetByNameAndClientID(ctx, bucketName, clientID)
+func (s *resourceService) Download(ctx context.Context, clientID, bucketID, hash string) (io.ReadCloser, *dto.ResourceResponse, error) {
+	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	resource, err := s.repo.GetByBucketAndHash(ctx, bucket.ID, hash)
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return nil, nil, bucketrepo.ErrBucketNotFound
+	}
+
+	resource, err := s.repo.GetByBucketAndHash(ctx, bucketID, hash)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	resourcePath := filepath.Join(s.storagePath, bucket.ID, hash)
+	filename := buildFilename(resource.Hash, resource.Extension)
+	resourcePath := filepath.Join(s.storagePath, bucket.ID, filename)
 	file, err := os.Open(resourcePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open resource file: %w", err)
 	}
 
-	return file, &dto.ResourceResponse{
+	resp := &dto.ResourceResponse{
 		ID:          resource.ID,
 		Hash:        resource.Hash,
 		Size:        resource.Size,
 		ContentType: resource.ContentType,
 		CreatedAt:   resource.CreatedAt.Time,
-	}, nil
+	}
+	if bucket.IsPublic == 1 {
+		resp.PublicURL = s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+	}
+	return file, resp, nil
 }
 
-func (s *resourceService) Get(ctx context.Context, clientID, bucketName, hash string) (*dto.ResourceResponse, error) {
-	bucket, err := s.bucketRepo.GetByNameAndClientID(ctx, bucketName, clientID)
+func (s *resourceService) Get(ctx context.Context, clientID, bucketID, hash string) (*dto.ResourceResponse, error) {
+	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
 		return nil, err
 	}
 
-	resource, err := s.repo.GetByBucketAndHash(ctx, bucket.ID, hash)
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return nil, bucketrepo.ErrBucketNotFound
+	}
+
+	resource, err := s.repo.GetByBucketAndHash(ctx, bucketID, hash)
 	if err != nil {
 		return nil, err
 	}
 
-	return &dto.ResourceResponse{
+	resp := &dto.ResourceResponse{
 		ID:          resource.ID,
 		Hash:        resource.Hash,
 		Size:        resource.Size,
 		ContentType: resource.ContentType,
 		CreatedAt:   resource.CreatedAt.Time,
-	}, nil
+	}
+	if bucket.IsPublic == 1 {
+		resp.PublicURL = s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+	}
+	return resp, nil
 }
 
-func (s *resourceService) List(ctx context.Context, clientID, bucketName string) (*dto.ResourceListResponse, error) {
-	bucket, err := s.bucketRepo.GetByNameAndClientID(ctx, bucketName, clientID)
+func (s *resourceService) List(ctx context.Context, clientID, bucketID string) (*dto.ResourceListResponse, error) {
+	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
 		return nil, err
 	}
 
-	resources, err := s.repo.ListByBucketID(ctx, bucket.ID)
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return nil, bucketrepo.ErrBucketNotFound
+	}
+
+	resources, err := s.repo.ListByBucketID(ctx, bucketID)
 	if err != nil {
 		return nil, err
 	}
@@ -189,30 +248,53 @@ func (s *resourceService) List(ctx context.Context, clientID, bucketName string)
 	}
 
 	for i, r := range resources {
-		response.Resources[i] = dto.ResourceResponse{
+		resp := dto.ResourceResponse{
 			ID:          r.ID,
 			Hash:        r.Hash,
 			Size:        r.Size,
 			ContentType: r.ContentType,
 			CreatedAt:   r.CreatedAt.Time,
 		}
+		if bucket.IsPublic == 1 {
+			resp.PublicURL = s.buildPublicURL(bucket.ID, r.Hash, r.Extension)
+		}
+		response.Resources[i] = resp
 	}
 
 	return response, nil
 }
 
-func (s *resourceService) Delete(ctx context.Context, clientID, bucketName, hash string) error {
-	bucket, err := s.bucketRepo.GetByNameAndClientID(ctx, bucketName, clientID)
+func (s *resourceService) buildPublicURL(bucketID, hash, extension string) string {
+	filename := buildFilename(hash, extension)
+	if s.publicURL != "" {
+		return fmt.Sprintf("%s/public/%s/%s", s.publicURL, bucketID, filename)
+	}
+	return fmt.Sprintf("/public/%s/%s", bucketID, filename)
+}
+
+func (s *resourceService) Delete(ctx context.Context, clientID, bucketID, hash string) error {
+	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.repo.DeleteByBucketAndHash(ctx, bucket.ID, hash); err != nil {
+	// Verify bucket belongs to client
+	if bucket.ClientID != clientID {
+		return bucketrepo.ErrBucketNotFound
+	}
+
+	resource, err := s.repo.GetByBucketAndHash(ctx, bucketID, hash)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.DeleteByBucketAndHash(ctx, bucketID, hash); err != nil {
 		return err
 	}
 
 	// Remove file from storage
-	resourcePath := filepath.Join(s.storagePath, bucket.ID, hash)
+	filename := buildFilename(resource.Hash, resource.Extension)
+	resourcePath := filepath.Join(s.storagePath, bucket.ID, filename)
 	os.Remove(resourcePath)
 
 	return nil
@@ -233,4 +315,22 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err
+}
+
+func getExtensionFromContentType(contentType string) (string, error) {
+	exts, err := mime.ExtensionsByType(contentType)
+	if err != nil {
+		return "", err
+	}
+	if len(exts) == 0 {
+		return "", errors.New("file extension not found")
+	}
+	return exts[0], nil
+}
+
+func buildFilename(hash, extension string) string {
+	if extension != "" {
+		return hash + extension
+	}
+	return hash
 }

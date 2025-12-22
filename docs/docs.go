@@ -333,14 +333,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/buckets/{name}": {
+        "/buckets/{id}": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get details of a specific bucket by name",
+                "description": "Get details of a specific bucket by ID",
                 "produces": [
                     "application/json"
                 ],
@@ -351,8 +351,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
-                        "name": "name",
+                        "description": "Bucket ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -396,7 +396,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a bucket by name (bucket must be empty)",
+                "description": "Delete a bucket by ID (bucket must be empty)",
                 "produces": [
                     "application/json"
                 ],
@@ -407,8 +407,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
-                        "name": "name",
+                        "description": "Bucket ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -508,7 +508,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
+                        "description": "Bucket ID",
                         "name": "bucket",
                         "in": "path",
                         "required": true
@@ -553,7 +553,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication.",
+                "description": "Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., \".jpg\", \".log\").",
                 "consumes": [
                     "*/*"
                 ],
@@ -567,9 +567,16 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
+                        "description": "Bucket ID",
                         "name": "bucket",
                         "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "File extension (e.g., .jpg, .log)",
+                        "name": "X-File-Extension",
+                        "in": "header",
                         "required": true
                     },
                     {
@@ -600,6 +607,12 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "401": {
@@ -636,7 +649,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
+                        "description": "Bucket ID",
                         "name": "bucket",
                         "in": "path",
                         "required": true
@@ -707,7 +720,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
+                        "description": "Bucket ID",
                         "name": "bucket",
                         "in": "path",
                         "required": true
@@ -758,7 +771,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
+                        "description": "Bucket ID",
                         "name": "bucket",
                         "in": "path",
                         "required": true
@@ -806,7 +819,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Bucket name",
+                        "description": "Bucket ID",
                         "name": "bucket",
                         "in": "path",
                         "required": true
@@ -970,6 +983,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "public_url": {
                     "type": "string"
                 },
                 "size": {

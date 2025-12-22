@@ -15,7 +15,8 @@ type Config struct {
 }
 
 type StorageConfig struct {
-	Path string
+	Path      string
+	PublicURL string
 }
 
 type ServerConfig struct {
@@ -50,7 +51,8 @@ func Load() *Config {
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
 		Storage: StorageConfig{
-			Path: getEnv("STORAGE_PATH", "./data/storage"),
+			Path:      getEnv("STORAGE_PATH", "./data/storage"),
+			PublicURL: getEnv("PUBLIC_URL", ""),
 		},
 		JWTSecret: getEnv("JWT_SECRET", "change-me-in-production"),
 		Env:       getEnv("ENV", "development"),

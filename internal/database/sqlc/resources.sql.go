@@ -10,9 +10,9 @@ import (
 )
 
 const createResource = `-- name: CreateResource :one
-INSERT INTO resources (id, bucket_id, hash, size, content_type)
-VALUES (?, ?, ?, ?, ?)
-RETURNING id, bucket_id, hash, size, content_type, created_at
+INSERT INTO resources (id, bucket_id, hash, size, content_type, extension)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, bucket_id, hash, size, content_type, extension, created_at
 `
 
 type CreateResourceParams struct {
@@ -21,6 +21,7 @@ type CreateResourceParams struct {
 	Hash        string `json:"hash"`
 	Size        int64  `json:"size"`
 	ContentType string `json:"content_type"`
+	Extension   string `json:"extension"`
 }
 
 func (q *Queries) CreateResource(ctx context.Context, arg CreateResourceParams) (Resource, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateResource(ctx context.Context, arg CreateResourceParams) 
 		arg.Hash,
 		arg.Size,
 		arg.ContentType,
+		arg.Extension,
 	)
 	var i Resource
 	err := row.Scan(
@@ -38,6 +40,7 @@ func (q *Queries) CreateResource(ctx context.Context, arg CreateResourceParams) 
 		&i.Hash,
 		&i.Size,
 		&i.ContentType,
+		&i.Extension,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -73,7 +76,7 @@ func (q *Queries) DeleteResourceByBucketAndHash(ctx context.Context, arg DeleteR
 }
 
 const getResourceByBucketAndHash = `-- name: GetResourceByBucketAndHash :one
-SELECT id, bucket_id, hash, size, content_type, created_at
+SELECT id, bucket_id, hash, size, content_type, extension, created_at
 FROM resources WHERE bucket_id = ? AND hash = ?
 `
 
@@ -91,13 +94,14 @@ func (q *Queries) GetResourceByBucketAndHash(ctx context.Context, arg GetResourc
 		&i.Hash,
 		&i.Size,
 		&i.ContentType,
+		&i.Extension,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getResourceByID = `-- name: GetResourceByID :one
-SELECT id, bucket_id, hash, size, content_type, created_at
+SELECT id, bucket_id, hash, size, content_type, extension, created_at
 FROM resources WHERE id = ?
 `
 
@@ -110,13 +114,14 @@ func (q *Queries) GetResourceByID(ctx context.Context, id string) (Resource, err
 		&i.Hash,
 		&i.Size,
 		&i.ContentType,
+		&i.Extension,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const listResourcesByBucketID = `-- name: ListResourcesByBucketID :many
-SELECT id, bucket_id, hash, size, content_type, created_at
+SELECT id, bucket_id, hash, size, content_type, extension, created_at
 FROM resources WHERE bucket_id = ? ORDER BY created_at DESC
 `
 
@@ -135,6 +140,7 @@ func (q *Queries) ListResourcesByBucketID(ctx context.Context, bucketID string) 
 			&i.Hash,
 			&i.Size,
 			&i.ContentType,
+			&i.Extension,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

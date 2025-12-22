@@ -34,6 +34,7 @@ type Resource struct {
 	Hash        string       `json:"hash"`
 	Size        int64        `json:"size"`
 	ContentType string       `json:"content_type"`
+	Extension   string       `json:"extension"`
 	CreatedAt   sql.NullTime `json:"created_at"`
 }
 

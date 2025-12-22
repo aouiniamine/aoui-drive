@@ -83,6 +83,8 @@ definitions:
         type: string
       id:
         type: string
+      public_url:
+        type: string
       size:
         type: integer
     type: object
@@ -334,13 +336,13 @@ paths:
       summary: Create a new bucket
       tags:
       - buckets
-  /buckets/{name}:
+  /buckets/{id}:
     delete:
-      description: Delete a bucket by name (bucket must be empty)
+      description: Delete a bucket by ID (bucket must be empty)
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
-        name: name
+        name: id
         required: true
         type: string
       produces:
@@ -362,11 +364,11 @@ paths:
       tags:
       - buckets
     get:
-      description: Get details of a specific bucket by name
+      description: Get details of a specific bucket by ID
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
-        name: name
+        name: id
         required: true
         type: string
       produces:
@@ -433,7 +435,7 @@ paths:
     get:
       description: List all resources in a bucket
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
         name: bucket
         required: true
@@ -469,7 +471,7 @@ paths:
       description: Upload a resource to a bucket using multipart form file upload.
         The file hash (SHA-256) becomes the resource identifier for deduplication.
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
         name: bucket
         required: true
@@ -512,11 +514,17 @@ paths:
       consumes:
       - '*/*'
       description: Upload a resource to a bucket using request body stream. The file
-        hash (SHA-256) becomes the resource identifier for deduplication.
+        hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension
+        header to specify the file extension (e.g., ".jpg", ".log").
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
         name: bucket
+        required: true
+        type: string
+      - description: File extension (e.g., .jpg, .log)
+        in: header
+        name: X-File-Extension
         required: true
         type: string
       - description: File content
@@ -538,6 +546,10 @@ paths:
                 data:
                   $ref: '#/definitions/dto.ResourceResponse'
               type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
         "401":
           description: Unauthorized
           schema:
@@ -555,7 +567,7 @@ paths:
     delete:
       description: Delete a resource from a bucket by its hash
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
         name: bucket
         required: true
@@ -586,7 +598,7 @@ paths:
     get:
       description: Download a resource from a bucket by its hash
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
         name: bucket
         required: true
@@ -619,7 +631,7 @@ paths:
     head:
       description: Get metadata of a resource without downloading the content
       parameters:
-      - description: Bucket name
+      - description: Bucket ID
         in: path
         name: bucket
         required: true

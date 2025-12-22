@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS resources (
     hash TEXT NOT NULL,
     size INTEGER NOT NULL,
     content_type TEXT NOT NULL,
+    extension TEXT NOT NULL DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (bucket_id) REFERENCES buckets(id) ON DELETE CASCADE,
     UNIQUE(bucket_id, hash)

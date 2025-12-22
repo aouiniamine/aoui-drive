@@ -22,8 +22,8 @@ func New(svc service.BucketService) *BucketController {
 func (c *BucketController) RegisterRoutes(g *echo.Group) {
 	g.POST("", c.Create)
 	g.GET("", c.List)
-	g.GET("/:name", c.Get)
-	g.DELETE("/:name", c.Delete)
+	g.GET("/:id", c.Get)
+	g.DELETE("/:id", c.Delete)
 }
 
 // Create godoc
@@ -69,20 +69,20 @@ func (c *BucketController) Create(ctx echo.Context) error {
 
 // Get godoc
 // @Summary Get bucket details
-// @Description Get details of a specific bucket by name
+// @Description Get details of a specific bucket by ID
 // @Tags buckets
 // @Produce json
 // @Security BearerAuth
-// @Param name path string true "Bucket name"
+// @Param id path string true "Bucket ID"
 // @Success 200 {object} response.Response{data=dto.BucketResponse}
 // @Failure 401 {object} response.Response
 // @Failure 404 {object} response.Response
-// @Router /buckets/{name} [get]
+// @Router /buckets/{id} [get]
 func (c *BucketController) Get(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	name := ctx.Param("name")
+	bucketID := ctx.Param("id")
 
-	bucket, err := c.service.Get(ctx.Request().Context(), clientID, name)
+	bucket, err := c.service.Get(ctx.Request().Context(), clientID, bucketID)
 	if err != nil {
 		if errors.Is(err, repository.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -115,20 +115,20 @@ func (c *BucketController) List(ctx echo.Context) error {
 
 // Delete godoc
 // @Summary Delete a bucket
-// @Description Delete a bucket by name (bucket must be empty)
+// @Description Delete a bucket by ID (bucket must be empty)
 // @Tags buckets
 // @Produce json
 // @Security BearerAuth
-// @Param name path string true "Bucket name"
+// @Param id path string true "Bucket ID"
 // @Success 204
 // @Failure 401 {object} response.Response
 // @Failure 404 {object} response.Response
-// @Router /buckets/{name} [delete]
+// @Router /buckets/{id} [delete]
 func (c *BucketController) Delete(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
-	name := ctx.Param("name")
+	bucketID := ctx.Param("id")
 
-	if err := c.service.Delete(ctx.Request().Context(), clientID, name); err != nil {
+	if err := c.service.Delete(ctx.Request().Context(), clientID, bucketID); err != nil {
 		if errors.Is(err, repository.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
 		}
