@@ -8,48 +8,31 @@ import (
 	authservice "github.com/aouiniamine/aoui-drive/internal/features/auth/service"
 	bucketservice "github.com/aouiniamine/aoui-drive/internal/features/bucket/service"
 	resourceservice "github.com/aouiniamine/aoui-drive/internal/features/resource/service"
+	webhookdto "github.com/aouiniamine/aoui-drive/internal/features/webhook/dto"
+	webhookservice "github.com/aouiniamine/aoui-drive/internal/features/webhook/service"
+	"github.com/aouiniamine/aoui-drive/internal/middleware"
 	"github.com/labstack/echo/v4"
 )
 
 const (
-	sessionCookieName = "session"
-	defaultPerPage    = 20
+	defaultPerPage = 20
 )
 
 type UIController struct {
 	authSvc     authservice.AuthService
 	bucketSvc   bucketservice.BucketService
 	resourceSvc resourceservice.ResourceService
+	webhookSvc  webhookservice.WebhookService
 	publicURL   string
 }
 
-func New(authSvc authservice.AuthService, bucketSvc bucketservice.BucketService, resourceSvc resourceservice.ResourceService, publicURL string) *UIController {
+func New(authSvc authservice.AuthService, bucketSvc bucketservice.BucketService, resourceSvc resourceservice.ResourceService, webhookSvc webhookservice.WebhookService, publicURL string) *UIController {
 	return &UIController{
 		authSvc:     authSvc,
 		bucketSvc:   bucketSvc,
 		resourceSvc: resourceSvc,
+		webhookSvc:  webhookSvc,
 		publicURL:   publicURL,
-	}
-}
-
-// AuthMiddleware checks for valid JWT in cookie
-func (c *UIController) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(ctx echo.Context) error {
-		cookie, err := ctx.Cookie(sessionCookieName)
-		if err != nil || cookie.Value == "" {
-			return ctx.Redirect(http.StatusFound, "/ui/login?error=Please+login+to+continue")
-		}
-
-		claims, err := c.authSvc.ValidateToken(cookie.Value)
-		if err != nil {
-			// Clear invalid cookie
-			c.clearSessionCookie(ctx)
-			return ctx.Redirect(http.StatusFound, "/ui/login?error=Session+expired")
-		}
-
-		// Store client ID in context
-		ctx.Set("client_id", claims.ClientID)
-		return next(ctx)
 	}
 }
 
@@ -59,7 +42,7 @@ func (c *UIController) RedirectToLogin(ctx echo.Context) error {
 
 func (c *UIController) LoginPage(ctx echo.Context) error {
 	// Check if already logged in
-	cookie, err := ctx.Cookie(sessionCookieName)
+	cookie, err := ctx.Cookie(middleware.SessionCookieName)
 	if err == nil && cookie.Value != "" {
 		if _, err := c.authSvc.ValidateToken(cookie.Value); err == nil {
 			return ctx.Redirect(http.StatusFound, "/ui/buckets")
@@ -89,7 +72,7 @@ func (c *UIController) Login(ctx echo.Context) error {
 
 	// Set session cookie
 	ctx.SetCookie(&http.Cookie{
-		Name:     sessionCookieName,
+		Name:     middleware.SessionCookieName,
 		Value:    tokenResp.AccessToken,
 		Path:     "/",
 		HttpOnly: true,
@@ -107,7 +90,7 @@ func (c *UIController) Logout(ctx echo.Context) error {
 }
 
 func (c *UIController) BucketsPage(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 
 	buckets, err := c.bucketSvc.List(ctx.Request().Context(), clientID)
 	if err != nil {
@@ -122,7 +105,7 @@ func (c *UIController) BucketsPage(ctx echo.Context) error {
 }
 
 func (c *UIController) BucketPage(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("id")
 
 	bucket, err := c.bucketSvc.Get(ctx.Request().Context(), clientID, bucketID)
@@ -176,7 +159,7 @@ func (c *UIController) BucketPage(ctx echo.Context) error {
 }
 
 func (c *UIController) ResourcesPartial(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("id")
 
 	bucket, err := c.bucketSvc.Get(ctx.Request().Context(), clientID, bucketID)
@@ -225,7 +208,7 @@ func (c *UIController) ResourcesPartial(ctx echo.Context) error {
 }
 
 func (c *UIController) DeleteResource(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("id")
 	hash := ctx.Param("hash")
 
@@ -240,7 +223,7 @@ func (c *UIController) DeleteResource(ctx echo.Context) error {
 }
 
 func (c *UIController) ViewResource(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("id")
 	hash := ctx.Param("hash")
 
@@ -258,7 +241,7 @@ func (c *UIController) ViewResource(ctx echo.Context) error {
 }
 
 func (c *UIController) DownloadResource(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("id")
 	hash := ctx.Param("hash")
 
@@ -277,7 +260,7 @@ func (c *UIController) DownloadResource(ctx echo.Context) error {
 }
 
 func (c *UIController) UploadResources(ctx echo.Context) error {
-	clientID := ctx.Get("client_id").(string)
+	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("id")
 
 	form, err := ctx.MultipartForm()
@@ -314,7 +297,7 @@ func (c *UIController) UploadResources(ctx echo.Context) error {
 
 func (c *UIController) clearSessionCookie(ctx echo.Context) {
 	cookie := &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     middleware.SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -340,4 +323,127 @@ func (c *UIController) getPagination(ctx echo.Context) (page, perPage int) {
 	}
 
 	return
+}
+
+// Webhook UI handlers
+
+func (c *UIController) WebhooksPage(ctx echo.Context) error {
+	clientID := middleware.GetClientID(ctx)
+	bucketID := ctx.Param("id")
+
+	bucket, err := c.bucketSvc.Get(ctx.Request().Context(), clientID, bucketID)
+	if err != nil {
+		return ctx.Redirect(http.StatusFound, "/ui/buckets")
+	}
+
+	webhooks, _ := c.webhookSvc.ListURLs(ctx.Request().Context(), clientID, bucketID)
+	var webhookList []webhookdto.WebhookURLResponse
+	if webhooks != nil {
+		webhookList = webhooks.Webhooks
+	}
+
+	return ctx.Render(http.StatusOK, "webhooks-page.html", map[string]interface{}{
+		"Bucket":   bucket,
+		"Webhooks": webhookList,
+	})
+}
+
+func (c *UIController) WebhooksListPartial(ctx echo.Context) error {
+	clientID := middleware.GetClientID(ctx)
+	bucketID := ctx.Param("id")
+
+	bucket, err := c.bucketSvc.Get(ctx.Request().Context(), clientID, bucketID)
+	if err != nil {
+		return ctx.HTML(http.StatusNotFound, "<p class='text-red-500'>Bucket not found</p>")
+	}
+
+	webhooks, err := c.webhookSvc.ListURLs(ctx.Request().Context(), clientID, bucketID)
+	if err != nil {
+		return ctx.HTML(http.StatusInternalServerError, "<p class='text-red-500'>Failed to load webhooks</p>")
+	}
+
+	return ctx.Render(http.StatusOK, "webhooks-list.html", map[string]interface{}{
+		"Bucket":   bucket,
+		"Webhooks": webhooks.Webhooks,
+	})
+}
+
+func (c *UIController) CreateWebhook(ctx echo.Context) error {
+	clientID := middleware.GetClientID(ctx)
+	bucketID := ctx.Param("id")
+
+	url := ctx.FormValue("url")
+	eventType := ctx.FormValue("event_type")
+	isActive := ctx.FormValue("is_active") == "on"
+
+	if url == "" || eventType == "" {
+		return ctx.HTML(http.StatusBadRequest, `<div class="text-red-600 text-sm">URL and event type are required</div>`)
+	}
+
+	_, err := c.webhookSvc.CreateURL(ctx.Request().Context(), clientID, bucketID, webhookdto.CreateWebhookURLRequest{
+		URL:       url,
+		EventType: eventType,
+		IsActive:  isActive,
+	})
+	if err != nil {
+		return ctx.HTML(http.StatusBadRequest, `<div class="text-red-600 text-sm">`+err.Error()+`</div>`)
+	}
+
+	// Trigger refresh of webhook list
+	ctx.Response().Header().Set("HX-Trigger", "webhookCreated")
+	return ctx.HTML(http.StatusOK, `<div class="text-green-600 text-sm">Webhook created successfully</div>`)
+}
+
+func (c *UIController) DeleteWebhook(ctx echo.Context) error {
+	clientID := middleware.GetClientID(ctx)
+	bucketID := ctx.Param("id")
+	webhookID := ctx.Param("webhookId")
+
+	err := c.webhookSvc.DeleteURL(ctx.Request().Context(), clientID, bucketID, webhookID)
+	if err != nil {
+		return ctx.HTML(http.StatusInternalServerError, "<p class='text-red-500'>Failed to delete webhook</p>")
+	}
+
+	// Return empty response - HTMX will remove the element
+	ctx.Response().Header().Set("HX-Trigger", "webhookDeleted")
+	return ctx.NoContent(http.StatusOK)
+}
+
+func (c *UIController) CreateWebhookHeader(ctx echo.Context) error {
+	clientID := middleware.GetClientID(ctx)
+	bucketID := ctx.Param("id")
+	webhookID := ctx.Param("webhookId")
+
+	headerName := ctx.FormValue("header_name")
+	headerValue := ctx.FormValue("header_value")
+
+	if headerName == "" || headerValue == "" {
+		return ctx.HTML(http.StatusBadRequest, `<div class="text-red-600 text-sm">Header name and value are required</div>`)
+	}
+
+	_, err := c.webhookSvc.CreateHeader(ctx.Request().Context(), clientID, bucketID, webhookID, webhookdto.CreateHeaderRequest{
+		Name:  headerName,
+		Value: headerValue,
+	})
+	if err != nil {
+		return ctx.HTML(http.StatusBadRequest, `<div class="text-red-600 text-sm">`+err.Error()+`</div>`)
+	}
+
+	// Return refreshed webhooks list
+	return c.WebhooksListPartial(ctx)
+}
+
+func (c *UIController) DeleteWebhookHeader(ctx echo.Context) error {
+	clientID := middleware.GetClientID(ctx)
+	bucketID := ctx.Param("id")
+	webhookID := ctx.Param("webhookId")
+	headerID := ctx.Param("headerId")
+
+	err := c.webhookSvc.DeleteHeader(ctx.Request().Context(), clientID, bucketID, webhookID, headerID)
+	if err != nil {
+		return ctx.HTML(http.StatusInternalServerError, "<p class='text-red-500'>Failed to delete header</p>")
+	}
+
+	// Return refreshed webhooks list
+	return c.WebhooksListPartial(ctx)
 }

@@ -42,3 +42,39 @@ type SchemaMigration struct {
 	Version   int64        `json:"version"`
 	AppliedAt sql.NullTime `json:"applied_at"`
 }
+
+type WebhookEvent struct {
+	ID            string         `json:"id"`
+	WebhookUrlID  string         `json:"webhook_url_id"`
+	BucketID      string         `json:"bucket_id"`
+	ResourceID    string         `json:"resource_id"`
+	EventType     string         `json:"event_type"`
+	Status        string         `json:"status"`
+	Payload       string         `json:"payload"`
+	ResponseCode  sql.NullInt64  `json:"response_code"`
+	ResponseBody  sql.NullString `json:"response_body"`
+	Attempts      int64          `json:"attempts"`
+	MaxAttempts   int64          `json:"max_attempts"`
+	NextRetryAt   sql.NullTime   `json:"next_retry_at"`
+	LastAttemptAt sql.NullTime   `json:"last_attempt_at"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
+	CompletedAt   sql.NullTime   `json:"completed_at"`
+}
+
+type WebhookHeader struct {
+	ID           string       `json:"id"`
+	WebhookUrlID string       `json:"webhook_url_id"`
+	HeaderName   string       `json:"header_name"`
+	HeaderValue  string       `json:"header_value"`
+	CreatedAt    sql.NullTime `json:"created_at"`
+}
+
+type WebhookUrl struct {
+	ID        string       `json:"id"`
+	BucketID  string       `json:"bucket_id"`
+	Url       string       `json:"url"`
+	EventType string       `json:"event_type"`
+	IsActive  int64        `json:"is_active"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
+}

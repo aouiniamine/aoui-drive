@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 
-	"github.com/aouiniamine/aoui-drive/internal/cache"
 	"github.com/aouiniamine/aoui-drive/internal/database"
 	"github.com/aouiniamine/aoui-drive/internal/features/health/dto"
 )
@@ -13,14 +12,12 @@ type HealthService interface {
 }
 
 type healthService struct {
-	db    *database.Database
-	cache *cache.Redis
+	db *database.Database
 }
 
-func New(db *database.Database, cache *cache.Redis) HealthService {
+func New(db *database.Database) HealthService {
 	return &healthService{
-		db:    db,
-		cache: cache,
+		db: db,
 	}
 }
 
@@ -35,13 +32,6 @@ func (s *healthService) Check(ctx context.Context) (*dto.ReadyResponse, error) {
 		status.Services["database"] = "unhealthy"
 	} else {
 		status.Services["database"] = "healthy"
-	}
-
-	if err := s.cache.Client.Ping(ctx).Err(); err != nil {
-		status.Status = "unhealthy"
-		status.Services["cache"] = "unhealthy"
-	} else {
-		status.Services["cache"] = "healthy"
 	}
 
 	return status, nil

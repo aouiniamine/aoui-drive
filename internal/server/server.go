@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/aouiniamine/aoui-drive/internal/cache"
 	"github.com/aouiniamine/aoui-drive/internal/config"
 	"github.com/aouiniamine/aoui-drive/internal/database"
 	"github.com/labstack/echo/v4"
@@ -16,10 +15,9 @@ type Server struct {
 	echo   *echo.Echo
 	config *config.Config
 	db     *database.Database
-	cache  *cache.Redis
 }
 
-func New(cfg *config.Config, db *database.Database, cache *cache.Redis) *Server {
+func New(cfg *config.Config, db *database.Database) *Server {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -32,7 +30,6 @@ func New(cfg *config.Config, db *database.Database, cache *cache.Redis) *Server 
 		echo:   e,
 		config: cfg,
 		db:     db,
-		cache:  cache,
 	}
 }
 
@@ -42,10 +39,6 @@ func (s *Server) Echo() *echo.Echo {
 
 func (s *Server) DB() *database.Database {
 	return s.db
-}
-
-func (s *Server) Cache() *cache.Redis {
-	return s.cache
 }
 
 func (s *Server) Start() error {

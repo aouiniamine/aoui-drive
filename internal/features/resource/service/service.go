@@ -16,8 +16,14 @@ import (
 	bucketrepo "github.com/aouiniamine/aoui-drive/internal/features/bucket/repository"
 	"github.com/aouiniamine/aoui-drive/internal/features/resource/dto"
 	"github.com/aouiniamine/aoui-drive/internal/features/resource/repository"
+	webhookdto "github.com/aouiniamine/aoui-drive/internal/features/webhook/dto"
 	"github.com/google/uuid"
 )
+
+// WebhookLauncher is an interface to avoid circular dependencies
+type WebhookLauncher interface {
+	TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string) error
+}
 
 type ResourceService interface {
 	UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader) (*dto.ResourceResponse, error)
@@ -29,18 +35,20 @@ type ResourceService interface {
 }
 
 type resourceService struct {
-	repo        repository.ResourceRepository
-	bucketRepo  bucketrepo.BucketRepository
-	storagePath string
-	publicURL   string
+	repo            repository.ResourceRepository
+	bucketRepo      bucketrepo.BucketRepository
+	webhookLauncher WebhookLauncher
+	storagePath     string
+	publicURL       string
 }
 
-func New(repo repository.ResourceRepository, bucketRepo bucketrepo.BucketRepository, storagePath, publicURL string) ResourceService {
+func New(repo repository.ResourceRepository, bucketRepo bucketrepo.BucketRepository, storagePath, publicURL string, webhookLauncher WebhookLauncher) ResourceService {
 	return &resourceService{
-		repo:        repo,
-		bucketRepo:  bucketRepo,
-		storagePath: storagePath,
-		publicURL:   publicURL,
+		repo:            repo,
+		bucketRepo:      bucketRepo,
+		storagePath:     storagePath,
+		publicURL:       publicURL,
+		webhookLauncher: webhookLauncher,
 	}
 }
 
@@ -143,6 +151,16 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, 
 	if bucket.IsPublic == 1 {
 		resp.PublicURL = s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
 	}
+
+	// Trigger webhook event for new resource
+	if s.webhookLauncher != nil {
+		go func() {
+			triggerCtx := context.Background()
+			resourceURL := s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceNew, bucket, resource, resourceURL)
+		}()
+	}
+
 	return resp, nil
 }
 
@@ -291,6 +309,25 @@ func (s *resourceService) Delete(ctx context.Context, clientID, bucketID, hash s
 	resource, err := s.repo.GetByBucketAndHash(ctx, bucketID, hash)
 	if err != nil {
 		return err
+	}
+
+	// Trigger webhook event for deleted resource before deletion
+	if s.webhookLauncher != nil {
+		resourceURL := s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+		// Create a copy of the resource for the webhook since it will be deleted
+		resourceCopy := &sqlc.Resource{
+			ID:          resource.ID,
+			BucketID:    resource.BucketID,
+			Hash:        resource.Hash,
+			Size:        resource.Size,
+			ContentType: resource.ContentType,
+			Extension:   resource.Extension,
+			CreatedAt:   resource.CreatedAt,
+		}
+		go func() {
+			triggerCtx := context.Background()
+			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceDeleted, bucket, resourceCopy, resourceURL)
+		}()
 	}
 
 	if err := s.repo.DeleteByBucketAndHash(ctx, bucketID, hash); err != nil {

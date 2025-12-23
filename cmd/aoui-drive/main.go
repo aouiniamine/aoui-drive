@@ -10,7 +10,6 @@ import (
 
 	_ "github.com/aouiniamine/aoui-drive/docs"
 
-	"github.com/aouiniamine/aoui-drive/internal/cache"
 	"github.com/aouiniamine/aoui-drive/internal/config"
 	"github.com/aouiniamine/aoui-drive/internal/database"
 	"github.com/aouiniamine/aoui-drive/internal/features/auth"
@@ -18,6 +17,7 @@ import (
 	"github.com/aouiniamine/aoui-drive/internal/features/health"
 	"github.com/aouiniamine/aoui-drive/internal/features/resource"
 	"github.com/aouiniamine/aoui-drive/internal/features/ui"
+	"github.com/aouiniamine/aoui-drive/internal/features/webhook"
 	"github.com/aouiniamine/aoui-drive/internal/middleware"
 	"github.com/aouiniamine/aoui-drive/internal/server"
 	"github.com/joho/godotenv"
@@ -60,22 +60,11 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	redisCache, err := cache.NewRedis(cache.RedisConfig{
-		Host:     cfg.Redis.Host,
-		Port:     cfg.Redis.Port,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
-	}
-	defer redisCache.Close()
-
-	srv := server.New(cfg, db, redisCache)
+	srv := server.New(cfg, db)
 
 	srv.Echo().GET("/swagger/*", echoSwagger.WrapHandler)
 
-	healthFeature := health.New(db, redisCache)
+	healthFeature := health.New(db)
 	healthFeature.RegisterRoutes(srv.Echo())
 
 	authFeature := auth.New(db, cfg.JWTSecret)
@@ -85,13 +74,19 @@ func main() {
 	bucketGroup := srv.Echo().Group("/buckets", middleware.Auth(authFeature.Service))
 	bucketFeature.RegisterRoutes(bucketGroup)
 
-	resourceFeature := resource.New(db, bucketFeature.Repository, cfg.Storage.Path, cfg.Storage.PublicURL)
+	// Webhook Feature (created before resource to enable auto-wiring)
+	webhookFeature := webhook.New(db, bucketFeature.Repository)
+	webhookGroup := srv.Echo().Group("/buckets/:bucketId/webhooks", middleware.Auth(authFeature.Service))
+	webhookFeature.RegisterRoutes(webhookGroup)
+
+	// Resource Feature (webhook launcher auto-wired)
+	resourceFeature := resource.New(db, bucketFeature.Repository, cfg.Storage.Path, cfg.Storage.PublicURL, webhookFeature.Service)
 	resourceGroup := srv.Echo().Group("/resources", middleware.Auth(authFeature.Service))
 	resourceFeature.RegisterRoutes(resourceGroup)
 
-	// UI Feature (web interface)
-	uiFeature := ui.New(authFeature.Service, bucketFeature.Service, resourceFeature.Service, cfg.Storage.PublicURL)
-	uiFeature.RegisterRoutes(srv.Echo())
+	// UI Feature (web interface) - uses unified auth middleware
+	uiFeature := ui.New(authFeature.Service, bucketFeature.Service, resourceFeature.Service, webhookFeature.Service, cfg.Storage.PublicURL)
+	uiFeature.RegisterRoutes(srv.Echo(), authFeature.Service)
 
 	// Serve public files with caching headers
 	publicPath := cfg.Storage.Path + "/public"

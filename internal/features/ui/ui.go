@@ -11,6 +11,8 @@ import (
 	bucketservice "github.com/aouiniamine/aoui-drive/internal/features/bucket/service"
 	resourceservice "github.com/aouiniamine/aoui-drive/internal/features/resource/service"
 	"github.com/aouiniamine/aoui-drive/internal/features/ui/controller"
+	webhookservice "github.com/aouiniamine/aoui-drive/internal/features/webhook/service"
+	"github.com/aouiniamine/aoui-drive/internal/middleware"
 	"github.com/labstack/echo/v4"
 )
 
@@ -29,14 +31,14 @@ type Feature struct {
 	Controller *controller.UIController
 }
 
-func New(authSvc authservice.AuthService, bucketSvc bucketservice.BucketService, resourceSvc resourceservice.ResourceService, publicURL string) *Feature {
-	ctrl := controller.New(authSvc, bucketSvc, resourceSvc, publicURL)
+func New(authSvc authservice.AuthService, bucketSvc bucketservice.BucketService, resourceSvc resourceservice.ResourceService, webhookSvc webhookservice.WebhookService, publicURL string) *Feature {
+	ctrl := controller.New(authSvc, bucketSvc, resourceSvc, webhookSvc, publicURL)
 	return &Feature{
 		Controller: ctrl,
 	}
 }
 
-func (f *Feature) RegisterRoutes(e *echo.Echo) {
+func (f *Feature) RegisterRoutes(e *echo.Echo, authSvc authservice.AuthService) {
 	// Parse templates with custom functions
 	funcMap := template.FuncMap{
 		"formatBytes": formatBytes,
@@ -58,9 +60,9 @@ func (f *Feature) RegisterRoutes(e *echo.Echo) {
 	e.GET("/ui/login", f.Controller.LoginPage)
 	e.POST("/ui/login", f.Controller.Login)
 
-	// Protected routes (auth required via cookie)
+	// Protected routes (uses unified auth middleware that checks Bearer token and cookie)
 	ui := e.Group("/ui")
-	ui.Use(f.Controller.AuthMiddleware)
+	ui.Use(middleware.Auth(authSvc))
 
 	ui.GET("/logout", f.Controller.Logout)
 	ui.GET("/buckets", f.Controller.BucketsPage)
@@ -70,6 +72,16 @@ func (f *Feature) RegisterRoutes(e *echo.Echo) {
 	ui.GET("/buckets/:id/resources/:hash/view", f.Controller.ViewResource)
 	ui.GET("/buckets/:id/resources/:hash/download", f.Controller.DownloadResource)
 	ui.DELETE("/buckets/:id/resources/:hash", f.Controller.DeleteResource)
+
+	// Webhook UI routes
+	ui.GET("/buckets/:id/webhooks", f.Controller.WebhooksPage)
+	ui.GET("/buckets/:id/webhooks/list", f.Controller.WebhooksListPartial)
+	ui.POST("/buckets/:id/webhooks", f.Controller.CreateWebhook)
+	ui.DELETE("/buckets/:id/webhooks/:webhookId", f.Controller.DeleteWebhook)
+
+	// Webhook header UI routes
+	ui.POST("/buckets/:id/webhooks/:webhookId/headers", f.Controller.CreateWebhookHeader)
+	ui.DELETE("/buckets/:id/webhooks/:webhookId/headers/:headerId", f.Controller.DeleteWebhookHeader)
 }
 
 // Template helper functions
