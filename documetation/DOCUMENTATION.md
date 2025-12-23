@@ -7,15 +7,17 @@
 3. [Authentication & Authorization](#authentication--authorization)
 4. [Feature Modules](#feature-modules)
 5. [File Storage System](#file-storage-system)
-6. [API Reference](#api-reference)
-7. [Security](#security)
-8. [Deployment](#deployment)
+6. [Webhook System](#webhook-system)
+7. [Web Dashboard](#web-dashboard)
+8. [API Reference](#api-reference)
+9. [Security](#security)
+10. [Deployment](#deployment)
 
 ---
 
 ## Architecture Overview
 
-AOUI Drive follows a clean, layered architecture with feature-based modularity. Each feature is self-contained with its own controller, service, repository, and DTOs.
+AOUI Drive is a file and media hosting server with a clean, layered architecture and feature-based modularity. Each feature is self-contained with its own controller, service, repository, and DTOs.
 
 ### Layered Architecture
 
@@ -44,8 +46,6 @@ main.go
     │
     ├── Database ─────────────────────┐
     │                                 │
-    ├── Redis Cache                   │
-    │                                 │
     └── Features                      │
         ├── Auth                      │
         │   ├── Repository ◄──────────┤
@@ -57,13 +57,20 @@ main.go
         │   ├── Service               │
         │   └── Controller            │
         │                             │
+        ├── Webhook ◄─────────────────┤
+        │   ├── Repository            │
+        │   ├── Service               │
+        │   └── Controller            │
+        │                             │
         ├── Resource                  │
         │   ├── Repository ◄──────────┘
-        │   ├── Service
+        │   ├── Service ◄── WebhookLauncher
         │   └── Controller
         │
+        ├── UI
+        │   └── Controller (uses Auth, Bucket, Resource, Webhook)
+        │
         └── Health
-            ├── Service
             └── Controller
 ```
 
@@ -105,11 +112,34 @@ AOUI Drive uses SQLite with WAL (Write-Ahead Logging) mode for improved concurre
 │ secret_key      │       │ is_public       │       │ size            │       │
 │ role            │       │ created_at      │       │ content_type    │       │
 │ is_active       │       │ updated_at      │       │ extension       │       │
-│ created_at      │       └─────────────────┘       │ created_at      │       │
-│ updated_at      │                                 └─────────────────┘       │
-└─────────────────┘                                                           │
-                                                                              │
-                                            UNIQUE(bucket_id, hash) ──────────┘
+│ created_at      │       └────────┬────────┘       │ created_at      │       │
+│ updated_at      │                │                └─────────────────┘       │
+└─────────────────┘                │                                          │
+                                   │         UNIQUE(bucket_id, hash) ─────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────┐
+                    │      webhook_urls        │
+                    ├──────────────────────────┤
+                    │ id (PK)                  │
+                    │ bucket_id (FK)           │
+                    │ url                      │
+                    │ event_type               │
+                    │ is_active                │
+                    │ created_at               │
+                    │ updated_at               │
+                    └────────────┬─────────────┘
+                                 │
+                                 ▼
+                    ┌──────────────────────────┐
+                    │     webhook_headers      │
+                    ├──────────────────────────┤
+                    │ id (PK)                  │
+                    │ webhook_url_id (FK)      │
+                    │ header_name              │
+                    │ header_value             │
+                    │ created_at               │
+                    └──────────────────────────┘
 ```
 
 ### Clients Table
@@ -162,6 +192,32 @@ Files stored within buckets.
 - `UNIQUE(bucket_id, hash)` - Enables deduplication within bucket
 - `FOREIGN KEY (bucket_id) REFERENCES buckets(id) ON DELETE CASCADE`
 
+### Webhook URLs Table
+
+Webhook endpoints configured per bucket.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT | UUID primary key |
+| `bucket_id` | TEXT | Parent bucket reference |
+| `url` | TEXT | Webhook endpoint URL |
+| `event_type` | TEXT | `resource.new` or `resource.deleted` |
+| `is_active` | INTEGER | 1 = active, 0 = disabled |
+| `created_at` | DATETIME | Creation timestamp |
+| `updated_at` | DATETIME | Last update timestamp |
+
+### Webhook Headers Table
+
+Custom HTTP headers for webhook requests.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT | UUID primary key |
+| `webhook_url_id` | TEXT | Parent webhook reference |
+| `header_name` | TEXT | HTTP header name |
+| `header_value` | TEXT | HTTP header value |
+| `created_at` | DATETIME | Creation timestamp |
+
 ---
 
 ## Authentication & Authorization
@@ -178,6 +234,7 @@ Files stored within buckets.
 └──────────┘                           └──────────┘
      │
      │  Authorization: Bearer <token>
+     │  OR Cookie: session=<token>
      ▼
 ┌──────────┐                           ┌──────────┐
 │  Client  │ ──────────────────────►   │   API    │
@@ -187,6 +244,15 @@ Files stored within buckets.
 │          │   Response                │          │
 └──────────┘                           └──────────┘
 ```
+
+### Unified Authentication
+
+The auth middleware supports both:
+1. **Bearer Token** - `Authorization: Bearer <token>` header
+2. **Session Cookie** - `session` cookie (used by web dashboard)
+
+For API routes, authentication failures return JSON errors.
+For UI routes (`/ui/*`), authentication failures redirect to login page.
 
 ### Token Structure
 
@@ -233,12 +299,6 @@ JWT tokens contain the following claims:
 - Client management (admin only)
 - Secret key regeneration
 
-**Key Files:**
-- `service/service.go` - Authentication logic, JWT handling
-- `controller/controller.go` - HTTP endpoints
-- `repository/repository.go` - Client data access
-- `dto/dto.go` - Request/response structures
-
 ### Bucket Feature
 
 **Location:** `internal/features/bucket/`
@@ -248,7 +308,6 @@ JWT tokens contain the following claims:
 - Bucket naming validation
 - Public/private access control
 - Storage directory management
-- Public symlink creation/removal
 
 **Bucket Naming Rules:**
 - Length: 3-63 characters
@@ -266,18 +325,40 @@ JWT tokens contain the following claims:
 - File download and metadata
 - Resource listing and deletion
 - Public URL generation
+- Webhook event triggering
 
 **Upload Methods:**
 
 1. **Streaming Upload (PUT)**
    - Raw body content
-   - Requires `X-File-Extension` header
+   - Optional `X-File-Extension` header
    - Best for large files
 
 2. **Multipart Upload (POST)**
    - Form-data with `file` field
    - Extension extracted from filename
    - Standard browser-compatible upload
+
+### Webhook Feature
+
+**Location:** `internal/features/webhook/`
+
+**Responsibilities:**
+- Webhook URL CRUD operations
+- Custom header management
+- Event dispatching on resource changes
+- HTTP delivery to external endpoints
+
+### UI Feature
+
+**Location:** `internal/features/ui/`
+
+**Responsibilities:**
+- Web dashboard interface
+- Session-based authentication (cookie)
+- Bucket and resource management UI
+- Webhook configuration UI
+- File upload/download handling
 
 ### Health Feature
 
@@ -287,7 +368,6 @@ JWT tokens contain the following claims:
 - Liveness probe (`/health`)
 - Readiness probe (`/ready`)
 - Database connectivity check
-- Redis connectivity check
 
 ---
 
@@ -301,11 +381,8 @@ JWT tokens contain the following claims:
 │   ├── {sha256-hash-1}.jpg
 │   ├── {sha256-hash-2}.pdf
 │   └── {sha256-hash-3}.png
-├── {bucket-uuid-2}/
-│   └── {sha256-hash-4}.txt
-└── public/
-    ├── {bucket-uuid-1} -> ../{bucket-uuid-1}  (symlink)
-    └── {bucket-uuid-3} -> ../{bucket-uuid-3}  (symlink)
+└── {bucket-uuid-2}/
+    └── {sha256-hash-4}.txt
 ```
 
 ### Upload Process
@@ -335,7 +412,8 @@ JWT tokens contain the following claims:
 ┌───────────────────┐    ┌───────────────────────────────┐
 │  Return Existing  │    │  Move to Final Location       │
 │     Resource      │    │  Create Database Record       │
-└───────────────────┘    └───────────────────────────────┘
+└───────────────────┘    │  Trigger Webhook Event        │
+                         └───────────────────────────────┘
                                    │
                                    ▼
                     ┌───────────────────────────────────┐
@@ -355,11 +433,95 @@ Resources are deduplicated within each bucket using SHA-256 hashes:
 
 ### Public Access
 
-When a bucket is marked as public:
+Public bucket files are accessible via static file serving:
+- URL: `GET /public/{bucket-id}/{hash}{extension}`
+- No authentication required
+- Files served directly from storage directory
 
-1. Symlink created: `{STORAGE_PATH}/public/{bucket-id} -> ../{bucket-id}`
-2. Files accessible via: `GET /public/{bucket-id}/{hash}{extension}`
-3. Public URL included in resource responses: `{PUBLIC_URL}/public/{bucket-id}/{filename}`
+---
+
+## Webhook System
+
+### Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Resource       │────▶│  Webhook         │────▶│  External       │
+│  Service        │     │  Service         │     │  Endpoint       │
+│                 │     │                  │     │                 │
+│  - Upload       │     │  - TriggerEvent  │     │  HTTP POST      │
+│  - Delete       │     │  - SendWebhook   │     │  + Headers      │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+```
+
+### Event Types
+
+| Event Type         | Trigger                          |
+|--------------------|----------------------------------|
+| `resource.new`     | When a new resource is uploaded  |
+| `resource.deleted` | When a resource is deleted       |
+
+### Webhook Payload
+
+```json
+{
+  "event": "resource.new",
+  "timestamp": "2025-12-23T10:30:00Z",
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000",
+  "bucket_name": "my-bucket",
+  "resource_id": "660e8400-e29b-41d4-a716-446655440001",
+  "resource_url": "https://example.com/resources/{bucket}/{hash}.{ext}",
+  "resource": {
+    "hash": "abc123def456...",
+    "size": 12345,
+    "content_type": "image/png",
+    "extension": ".png"
+  }
+}
+```
+
+### Default Headers
+
+Every webhook request includes:
+
+| Header            | Value                        |
+|-------------------|------------------------------|
+| `Content-Type`    | `application/json`           |
+| `User-Agent`      | `AOUI-Drive-Webhook/1.0`     |
+| `X-Webhook-Event` | Event type                   |
+
+Custom headers configured per webhook are added to these defaults.
+
+### Delivery
+
+- Webhooks are sent asynchronously (fire-and-forget)
+- HTTP timeout: 10 seconds per request
+- No automatic retries (simplicity over complexity)
+- Only active webhooks (`is_active = 1`) receive events
+
+---
+
+## Web Dashboard
+
+### Access
+
+```
+http://localhost:8080/ui
+```
+
+### Features
+
+- **Login** - Authenticate with access key and secret key
+- **Bucket Management** - View, create buckets
+- **Resource Management** - Upload, view, download, delete files
+- **Webhook Configuration** - Add webhooks, manage custom headers
+- **Real-time Updates** - HTMX-powered dynamic interface
+
+### Technology
+
+- **Frontend:** HTMX + Tailwind CSS
+- **Templating:** Go html/template
+- **Session:** JWT stored in HTTP-only cookie
 
 ---
 
@@ -390,76 +552,11 @@ Authenticate and receive JWT token.
 }
 ```
 
-### Admin Endpoints
-
-#### POST /admin/clients
-
-Create new client (Admin only).
-
-**Request:**
-```json
-{
-  "name": "my-service",
-  "role": "USER"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "name": "my-service",
-    "access_key": "AK...",
-    "secret_key": "...",
-    "role": "USER"
-  }
-}
-```
-
-#### POST /admin/clients/:id/regenerate-secret
-
-Regenerate client secret key (Admin only).
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "secret_key": "new-secret-key..."
-  }
-}
-```
-
 ### Bucket Endpoints
 
 #### POST /buckets
 
 Create new bucket.
-
-**Query Parameters:**
-- `public` (boolean) - Make bucket publicly accessible
-
-**Request:**
-```json
-{
-  "name": "my-bucket"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "name": "my-bucket",
-    "public": false,
-    "created_at": "2024-01-01T00:00:00Z"
-  }
-}
-```
 
 #### GET /buckets
 
@@ -479,42 +576,13 @@ Delete bucket by ID.
 
 Upload resource via streaming.
 
-**Headers:**
-- `Content-Type` - MIME type of the file
-- `X-File-Extension` - File extension (required, e.g., ".jpg")
-
-**Body:** Raw file content
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "uuid",
-    "hash": "sha256...",
-    "size": 1024,
-    "content_type": "image/jpeg",
-    "created_at": "2024-01-01T00:00:00Z",
-    "public_url": "http://example.com/public/bucket-id/hash.jpg"
-  }
-}
-```
-
 #### POST /resources/:bucket
 
 Upload resource via multipart form.
 
-**Form Data:**
-- `file` - File to upload
-
 #### GET /resources/:bucket/:hash
 
 Download resource by hash.
-
-**Response Headers:**
-- `X-Resource-Hash` - SHA-256 hash
-- `Content-Type` - MIME type
-- `Content-Length` - File size
 
 #### HEAD /resources/:bucket/:hash
 
@@ -528,33 +596,45 @@ List all resources in bucket.
 
 Delete resource by hash.
 
+### Webhook Endpoints
+
+#### POST /buckets/:bucketId/webhooks
+
+Create webhook URL.
+
+#### GET /buckets/:bucketId/webhooks
+
+List webhooks for bucket.
+
+#### GET /buckets/:bucketId/webhooks/:id
+
+Get webhook details.
+
+#### PUT /buckets/:bucketId/webhooks/:id
+
+Update webhook.
+
+#### DELETE /buckets/:bucketId/webhooks/:id
+
+Delete webhook.
+
+#### POST /buckets/:bucketId/webhooks/:id/headers
+
+Add custom header.
+
+#### DELETE /buckets/:bucketId/webhooks/:id/headers/:headerId
+
+Delete custom header.
+
 ### Health Endpoints
 
 #### GET /health
 
 Simple health check.
 
-**Response:**
-```json
-{
-  "status": "ok"
-}
-```
-
 #### GET /ready
 
-Readiness check with service status.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "services": {
-    "database": "healthy",
-    "cache": "healthy"
-  }
-}
-```
+Readiness check with database status.
 
 ---
 
@@ -566,6 +646,7 @@ Readiness check with service status.
 - Tokens expire after 24 hours
 - Secret keys stored as bcrypt hashes (cost factor 10)
 - Access keys are unique and indexed
+- Session cookies are HTTP-only
 
 ### Data Isolation
 
@@ -577,14 +658,13 @@ Readiness check with service status.
 
 - Foreign key constraints enforced
 - WAL mode for crash recovery
-- Single connection limit prevents concurrent write conflicts
+- Cascading deletes for referential integrity
 
 ### Best Practices
 
 1. **Change JWT Secret:** Set a strong `JWT_SECRET` in production
 2. **Use HTTPS:** Deploy behind a reverse proxy with TLS
-3. **Limit Access:** Use firewall rules to restrict database/Redis access
-4. **Backup:** Regular backups of SQLite database and storage directory
+3. **Backup:** Regular backups of SQLite database and storage directory
 
 ---
 
@@ -603,12 +683,6 @@ DATABASE_PATH=/data/aoui-drive.db
 # Storage
 STORAGE_PATH=/data/storage
 PUBLIC_URL=https://cdn.example.com
-
-# Redis
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_PASSWORD=secure-password
-REDIS_DB=0
 
 # Security
 JWT_SECRET=your-secure-secret-key
@@ -633,13 +707,6 @@ EXPOSE 8080
 CMD ["./aoui-drive"]
 ```
 
-### Scaling Considerations
-
-- **SQLite Limitations:** Single-writer, suitable for single-instance deployments
-- **Storage:** Local filesystem; consider object storage for distributed deployments
-- **Redis:** External Redis supports multiple instances
-- **Stateless API:** Can run multiple instances with shared database/storage
-
 ### Health Checks
 
 Configure your orchestrator to use:
@@ -660,7 +727,3 @@ Configure your orchestrator to use:
 | `NOT_FOUND` | 404 | Resource not found |
 | `CONFLICT` | 409 | Resource already exists |
 | `INTERNAL_ERROR` | 500 | Server error |
-
-### MIME Type to Extension
-
-The system uses Go's `mime` package to determine file extensions from content types. For stream uploads, the `X-File-Extension` header is required to ensure correct file naming.

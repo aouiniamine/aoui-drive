@@ -26,11 +26,10 @@ import (
 
 // @title AOUI Drive API
 // @version 1.0
-// @description MinIO-like Object Storage API
-// @termsOfService http://swagger.io/terms/
+// @description file and media hosting server with a web dashboard for bucket and resource management and RESTful API.
 
-// @contact.name API Support
-// @contact.email support@aoui-drive.io
+// @contact.name Amine M. Aouini
+// @contact.email amine.m.aouini@hotmail.com
 
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html

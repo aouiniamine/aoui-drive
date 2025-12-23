@@ -45,6 +45,37 @@ definitions:
       role:
         $ref: '#/definitions/dto.Role'
     type: object
+  dto.CreateHeaderRequest:
+    properties:
+      name:
+        type: string
+      value:
+        type: string
+    type: object
+  dto.CreateWebhookURLRequest:
+    properties:
+      event_type:
+        type: string
+      headers:
+        items:
+          $ref: '#/definitions/dto.CreateHeaderRequest'
+        type: array
+      is_active:
+        type: boolean
+      url:
+        type: string
+    type: object
+  dto.HeaderResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      value:
+        type: string
+    type: object
   dto.HealthResponse:
     properties:
       status:
@@ -79,6 +110,8 @@ definitions:
         type: string
       created_at:
         type: string
+      extension:
+        type: string
       hash:
         type: string
       id:
@@ -109,6 +142,48 @@ definitions:
         type: string
       expires_in:
         type: integer
+    type: object
+  dto.UpdateHeaderRequest:
+    properties:
+      value:
+        type: string
+    type: object
+  dto.UpdateWebhookURLRequest:
+    properties:
+      event_type:
+        type: string
+      is_active:
+        type: boolean
+      url:
+        type: string
+    type: object
+  dto.WebhookURLListResponse:
+    properties:
+      webhooks:
+        items:
+          $ref: '#/definitions/dto.WebhookURLResponse'
+        type: array
+    type: object
+  dto.WebhookURLResponse:
+    properties:
+      bucket_id:
+        type: string
+      created_at:
+        type: string
+      event_type:
+        type: string
+      headers:
+        items:
+          $ref: '#/definitions/dto.HeaderResponse'
+        type: array
+      id:
+        type: string
+      is_active:
+        type: boolean
+      updated_at:
+        type: string
+      url:
+        type: string
     type: object
   response.ErrorInfo:
     properties:
@@ -336,6 +411,348 @@ paths:
       summary: Create a new bucket
       tags:
       - buckets
+  /buckets/{bucketId}/webhooks:
+    get:
+      description: List all webhook URLs for a bucket
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.WebhookURLListResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List webhook URLs
+      tags:
+      - webhooks
+    post:
+      consumes:
+      - application/json
+      description: Create a new webhook URL for a bucket
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateWebhookURLRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.WebhookURLResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Create a webhook URL
+      tags:
+      - webhooks
+  /buckets/{bucketId}/webhooks/{webhookId}:
+    delete:
+      description: Delete a webhook URL
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook ID
+        in: path
+        name: webhookId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Delete webhook URL
+      tags:
+      - webhooks
+    get:
+      description: Get details of a specific webhook URL
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook ID
+        in: path
+        name: webhookId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.WebhookURLResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get webhook URL details
+      tags:
+      - webhooks
+    put:
+      consumes:
+      - application/json
+      description: Update a webhook URL
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook ID
+        in: path
+        name: webhookId
+        required: true
+        type: string
+      - description: Webhook details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateWebhookURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.WebhookURLResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update webhook URL
+      tags:
+      - webhooks
+  /buckets/{bucketId}/webhooks/{webhookId}/headers:
+    post:
+      consumes:
+      - application/json
+      description: Add a custom header to a webhook URL
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook ID
+        in: path
+        name: webhookId
+        required: true
+        type: string
+      - description: Header details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateHeaderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.HeaderResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Create webhook header
+      tags:
+      - webhooks
+  /buckets/{bucketId}/webhooks/{webhookId}/headers/{headerId}:
+    delete:
+      description: Delete a webhook header
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook ID
+        in: path
+        name: webhookId
+        required: true
+        type: string
+      - description: Header ID
+        in: path
+        name: headerId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Delete webhook header
+      tags:
+      - webhooks
+    put:
+      consumes:
+      - application/json
+      description: Update a webhook header value
+      parameters:
+      - description: Bucket ID
+        in: path
+        name: bucketId
+        required: true
+        type: string
+      - description: Webhook ID
+        in: path
+        name: webhookId
+        required: true
+        type: string
+      - description: Header ID
+        in: path
+        name: headerId
+        required: true
+        type: string
+      - description: Header details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateHeaderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.HeaderResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update webhook header
+      tags:
+      - webhooks
   /buckets/{id}:
     delete:
       description: Delete a bucket by ID (bucket must be empty)
@@ -525,7 +942,6 @@ paths:
       - description: File extension (e.g., .jpg, .log)
         in: header
         name: X-File-Extension
-        required: true
         type: string
       - description: File content
         format: binary

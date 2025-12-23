@@ -156,7 +156,7 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, 
 	if s.webhookLauncher != nil {
 		go func() {
 			triggerCtx := context.Background()
-			resourceURL := s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+			resourceURL := s.buildDownloadURL(bucket.ID, resource.Hash, resource.Extension)
 			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceNew, bucket, resource, resourceURL)
 		}()
 	}
@@ -295,6 +295,14 @@ func (s *resourceService) buildPublicURL(bucketID, hash, extension string) strin
 	return fmt.Sprintf("/public/%s/%s", bucketID, filename)
 }
 
+// buildDownloadURL constructs the download endpoint URL (works for both public and private buckets)
+func (s *resourceService) buildDownloadURL(bucketID, hash string, extension string) string {
+	if s.publicURL != "" {
+		return fmt.Sprintf("%s/resources/%s/%s%s", s.publicURL, bucketID, hash, extension)
+	}
+	return fmt.Sprintf("/resources/%s/%s%s", bucketID, hash, extension)
+}
+
 func (s *resourceService) Delete(ctx context.Context, clientID, bucketID, hash string) error {
 	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
@@ -313,7 +321,7 @@ func (s *resourceService) Delete(ctx context.Context, clientID, bucketID, hash s
 
 	// Trigger webhook event for deleted resource before deletion
 	if s.webhookLauncher != nil {
-		resourceURL := s.buildPublicURL(bucket.ID, resource.Hash, resource.Extension)
+		resourceURL := s.buildDownloadURL(bucket.ID, resource.Hash, resource.Extension)
 		// Create a copy of the resource for the webhook since it will be deleted
 		resourceCopy := &sqlc.Resource{
 			ID:          resource.ID,

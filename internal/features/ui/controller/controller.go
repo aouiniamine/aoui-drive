@@ -234,7 +234,6 @@ func (c *UIController) ViewResource(ctx echo.Context) error {
 	defer file.Close()
 
 	ctx.Response().Header().Set("Content-Type", resource.ContentType)
-	ctx.Response().Header().Set("Content-Length", strconv.FormatInt(resource.Size, 10))
 	ctx.Response().Header().Set("Cache-Control", "private, max-age=3600")
 
 	return ctx.Stream(http.StatusOK, resource.ContentType, file)
@@ -253,7 +252,6 @@ func (c *UIController) DownloadResource(ctx echo.Context) error {
 
 	filename := resource.Hash + resource.Extension
 	ctx.Response().Header().Set("Content-Type", resource.ContentType)
-	ctx.Response().Header().Set("Content-Length", strconv.FormatInt(resource.Size, 10))
 	ctx.Response().Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 
 	return ctx.Stream(http.StatusOK, resource.ContentType, file)

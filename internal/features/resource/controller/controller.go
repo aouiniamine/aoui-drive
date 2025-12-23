@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	bucketrepo "github.com/aouiniamine/aoui-drive/internal/features/bucket/repository"
 	"github.com/aouiniamine/aoui-drive/internal/features/resource/repository"
@@ -30,6 +31,15 @@ func (c *ResourceController) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/:bucket/:hash", c.Delete)
 }
 
+// extractHash strips the file extension from the hash parameter if present
+// This allows URLs like /resources/{bucket}/{hash}.png to work
+func extractHash(hashParam string) string {
+	if idx := strings.LastIndex(hashParam, "."); idx > 0 {
+		return hashParam[:idx]
+	}
+	return hashParam
+}
+
 // UploadStream godoc
 // @Summary Upload resource via stream
 // @Description Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., ".jpg", ".log").
@@ -38,7 +48,7 @@ func (c *ResourceController) RegisterRoutes(g *echo.Group) {
 // @Produce json
 // @Security BearerAuth
 // @Param bucket path string true "Bucket ID"
-// @Param X-File-Extension header string true "File extension (e.g., .jpg, .log)"
+// @Param X-File-Extension header string false "File extension (e.g., .jpg, .log)"
 // @Param file body string true "File content" format(binary)
 // @Success 200 {object} response.Response{data=dto.ResourceResponse}
 // @Failure 400 {object} response.Response
@@ -55,9 +65,6 @@ func (c *ResourceController) UploadStream(ctx echo.Context) error {
 	}
 
 	extension := ctx.Request().Header.Get("X-File-Extension")
-	if extension == "" {
-		return response.BadRequest(ctx, "X-File-Extension header is required")
-	}
 
 	resource, err := c.service.UploadStream(ctx.Request().Context(), clientID, bucketID, contentType, extension, ctx.Request().Body)
 	if err != nil {
@@ -119,7 +126,7 @@ func (c *ResourceController) UploadFile(ctx echo.Context) error {
 func (c *ResourceController) Download(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("bucket")
-	hash := ctx.Param("hash")
+	hash := extractHash(ctx.Param("hash"))
 
 	reader, resource, err := c.service.Download(ctx.Request().Context(), clientID, bucketID, hash)
 	if err != nil {
@@ -156,7 +163,7 @@ func (c *ResourceController) Download(ctx echo.Context) error {
 func (c *ResourceController) Head(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("bucket")
-	hash := ctx.Param("hash")
+	hash := extractHash(ctx.Param("hash"))
 
 	resource, err := c.service.Get(ctx.Request().Context(), clientID, bucketID, hash)
 	if err != nil {
@@ -217,7 +224,7 @@ func (c *ResourceController) List(ctx echo.Context) error {
 func (c *ResourceController) Delete(ctx echo.Context) error {
 	clientID := middleware.GetClientID(ctx)
 	bucketID := ctx.Param("bucket")
-	hash := ctx.Param("hash")
+	hash := extractHash(ctx.Param("hash"))
 
 	if err := c.service.Delete(ctx.Request().Context(), clientID, bucketID, hash); err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {

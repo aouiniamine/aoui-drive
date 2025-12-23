@@ -1,14 +1,16 @@
 # AOUI Drive
 
-A MinIO-like Object Storage API built in Go. AOUI Drive provides a secure, multi-tenant storage service with authentication, bucket management, and resource (file) handling capabilities.
+A file and media hosting server with a web dashboard for bucket and resource management, RESTful API, and webhook notifications for real-time event streaming.
 
 ## Features
 
+- **File & Media Hosting** - Upload, store, and serve files with content-type detection
+- **Public & Private Buckets** - Control access with public URLs or authenticated endpoints
+- **Web Dashboard** - Browser-based UI for managing buckets, resources, and webhooks
+- **Webhook Notifications** - Real-time HTTP callbacks on resource creation and deletion
 - **Multi-tenant Architecture** - Clients are isolated with their own buckets and resources
 - **JWT Authentication** - Secure API access with 24-hour tokens
-- **Role-Based Access Control** - ADMIN, MANAGER, and USER roles
 - **Content Deduplication** - SHA-256 hash-based deduplication within buckets
-- **Public Buckets** - Optional public access via symlinks
 - **Streaming Uploads** - Support for both streaming (PUT) and multipart form (POST) uploads
 - **Swagger Documentation** - Built-in API documentation at `/swagger/`
 
@@ -16,7 +18,7 @@ A MinIO-like Object Storage API built in Go. AOUI Drive provides a secure, multi
 
 - **Framework:** Echo v4
 - **Database:** SQLite with WAL mode
-- **Cache:** Redis
+- **Frontend:** HTMX + Tailwind CSS
 - **Authentication:** JWT (HS256)
 - **Password Hashing:** bcrypt
 
@@ -25,7 +27,6 @@ A MinIO-like Object Storage API built in Go. AOUI Drive provides a secure, multi
 ### Prerequisites
 
 - Go 1.21+
-- Redis server
 - SQLite3
 
 ### Installation
@@ -43,12 +44,7 @@ cp .env.example .env
 
 3. Configure your environment variables in `.env`
 
-4. Start Redis (using Docker):
-```bash
-docker-compose up -d
-```
-
-5. Run the application:
+4. Run the application:
 ```bash
 go run cmd/aoui-drive/main.go
 ```
@@ -61,6 +57,20 @@ go run cmd/create-client/main.go -name "admin" -role "ADMIN"
 ```
 
 This will output the `access_key` and `secret_key` for authentication.
+
+## Web Dashboard
+
+Access the web interface at:
+```
+http://localhost:8080/ui
+```
+
+Features:
+- Login with access key and secret key
+- Browse and manage buckets
+- Upload, view, and delete resources
+- Configure webhooks with custom headers
+- Real-time updates with HTMX
 
 ## API Overview
 
@@ -113,9 +123,48 @@ curl http://localhost:8080/resources/<bucket-id>/<hash> \
   -H "Authorization: Bearer <token>" \
   -o downloaded-file.jpg
 
-# List resources in bucket
-curl http://localhost:8080/resources/<bucket-id> \
+# Access public resource (no auth required)
+curl http://localhost:8080/public/<bucket-id>/<hash>.jpg \
+  -o downloaded-file.jpg
+```
+
+### Webhooks
+
+Configure webhooks to receive notifications when resources are created or deleted:
+
+```bash
+# Create a webhook
+curl -X POST http://localhost:8080/buckets/<bucket-id>/webhooks \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://api.example.com/webhook",
+    "event_type": "resource.new",
+    "is_active": true,
+    "headers": [{"name": "X-API-Key", "value": "secret"}]
+  }'
+
+# List webhooks
+curl http://localhost:8080/buckets/<bucket-id>/webhooks \
   -H "Authorization: Bearer <token>"
+```
+
+Webhook payload example:
+```json
+{
+  "event": "resource.new",
+  "timestamp": "2025-12-23T10:30:00Z",
+  "bucket_id": "...",
+  "bucket_name": "my-bucket",
+  "resource_id": "...",
+  "resource_url": "https://example.com/resources/.../hash.jpg",
+  "resource": {
+    "hash": "abc123...",
+    "size": 12345,
+    "content_type": "image/jpeg",
+    "extension": ".jpg"
+  }
+}
 ```
 
 ### Health Checks
@@ -124,7 +173,7 @@ curl http://localhost:8080/resources/<bucket-id> \
 # Simple health check
 curl http://localhost:8080/health
 
-# Readiness check (includes database and Redis status)
+# Readiness check (includes database status)
 curl http://localhost:8080/ready
 ```
 
@@ -136,11 +185,7 @@ curl http://localhost:8080/ready
 | `PORT` | `8080` | Server port |
 | `DATABASE_PATH` | `./data/aoui-drive.db` | SQLite database location |
 | `STORAGE_PATH` | `./data/storage` | File storage directory |
-| `PUBLIC_URL` | `` | Public URL prefix for public resources |
-| `REDIS_HOST` | `localhost` | Redis server hostname |
-| `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_PASSWORD` | `` | Redis password |
-| `REDIS_DB` | `0` | Redis database number |
+| `PUBLIC_URL` | `` | Public URL prefix for resources |
 | `JWT_SECRET` | `change-me-in-production` | JWT signing secret |
 | `ENV` | `development` | Environment mode |
 
@@ -152,24 +197,26 @@ aoui-drive/
 │   ├── aoui-drive/          # Main application
 │   └── create-client/       # CLI for creating clients
 ├── internal/
-│   ├── cache/               # Redis client
 │   ├── config/              # Configuration
 │   ├── database/            # SQLite & migrations
 │   ├── features/            # Feature modules
 │   │   ├── auth/            # Authentication
 │   │   ├── bucket/          # Bucket management
 │   │   ├── health/          # Health checks
-│   │   └── resource/        # File management
+│   │   ├── resource/        # File management
+│   │   ├── ui/              # Web dashboard
+│   │   └── webhook/         # Webhook notifications
 │   ├── middleware/          # Auth middleware
 │   └── server/              # Echo server setup
 ├── pkg/
 │   └── response/            # Response helpers
-└── docs/                    # Swagger documentation
+├── docs/                    # Swagger documentation
+└── documetation/            # Architecture docs
 ```
 
 ## Documentation
 
-For detailed architecture and API documentation, see [DOCUMENTATION.md](DOCUMENTATION.md).
+- [Webhook Integration](documetation/webhooks.md) - Webhook architecture and configuration
 
 ## API Documentation (Swagger)
 
