@@ -22,12 +22,12 @@ import (
 
 // WebhookLauncher is an interface to avoid circular dependencies
 type WebhookLauncher interface {
-	TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string) error
+	TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string, extraHeaders map[string]string) error
 }
 
 type ResourceService interface {
-	UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader) (*dto.ResourceResponse, error)
-	UploadFile(ctx context.Context, clientID, bucketID string, file *multipart.FileHeader) (*dto.ResourceResponse, error)
+	UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader, webhookHeaders map[string]string) (*dto.ResourceResponse, error)
+	UploadFile(ctx context.Context, clientID, bucketID string, file *multipart.FileHeader, webhookHeaders map[string]string) (*dto.ResourceResponse, error)
 	Download(ctx context.Context, clientID, bucketID, hash string) (io.ReadCloser, *dto.ResourceResponse, error)
 	Get(ctx context.Context, clientID, bucketID, hash string) (*dto.ResourceResponse, error)
 	List(ctx context.Context, clientID, bucketID string) (*dto.ResourceListResponse, error)
@@ -52,7 +52,7 @@ func New(repo repository.ResourceRepository, bucketRepo bucketrepo.BucketReposit
 	}
 }
 
-func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader) (*dto.ResourceResponse, error) {
+func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, contentType, extension string, reader io.Reader, webhookHeaders map[string]string) (*dto.ResourceResponse, error) {
 	bucket, err := s.bucketRepo.GetByID(ctx, bucketID)
 	if err != nil {
 		return nil, err
@@ -157,14 +157,14 @@ func (s *resourceService) UploadStream(ctx context.Context, clientID, bucketID, 
 		go func() {
 			triggerCtx := context.Background()
 			resourceURL := s.buildDownloadURL(bucket.ID, resource.Hash, resource.Extension)
-			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceNew, bucket, resource, resourceURL)
+			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceNew, bucket, resource, resourceURL, webhookHeaders)
 		}()
 	}
 
 	return resp, nil
 }
 
-func (s *resourceService) UploadFile(ctx context.Context, clientID, bucketID string, file *multipart.FileHeader) (*dto.ResourceResponse, error) {
+func (s *resourceService) UploadFile(ctx context.Context, clientID, bucketID string, file *multipart.FileHeader, webhookHeaders map[string]string) (*dto.ResourceResponse, error) {
 	src, err := file.Open()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open uploaded file: %w", err)
@@ -179,7 +179,7 @@ func (s *resourceService) UploadFile(ctx context.Context, clientID, bucketID str
 	// Extract extension from original filename
 	extension := filepath.Ext(file.Filename)
 
-	return s.UploadStream(ctx, clientID, bucketID, contentType, extension, src)
+	return s.UploadStream(ctx, clientID, bucketID, contentType, extension, src, webhookHeaders)
 }
 
 func (s *resourceService) Download(ctx context.Context, clientID, bucketID, hash string) (io.ReadCloser, *dto.ResourceResponse, error) {
@@ -334,7 +334,7 @@ func (s *resourceService) Delete(ctx context.Context, clientID, bucketID, hash s
 		}
 		go func() {
 			triggerCtx := context.Background()
-			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceDeleted, bucket, resourceCopy, resourceURL)
+			s.webhookLauncher.TriggerEvent(triggerCtx, webhookdto.EventResourceDeleted, bucket, resourceCopy, resourceURL, nil)
 		}()
 	}
 

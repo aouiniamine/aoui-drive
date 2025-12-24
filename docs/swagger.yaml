@@ -216,13 +216,13 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: support@aoui-drive.io
-    name: API Support
-  description: MinIO-like Object Storage API
+    email: amine.m.aouini@hotmail.com
+    name: Amine M. Aouini
+  description: file and media hosting server with a web dashboard for bucket and resource
+    management and RESTful API.
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
-  termsOfService: http://swagger.io/terms/
   title: AOUI Drive API
   version: "1.0"
 paths:
@@ -887,6 +887,8 @@ paths:
       - multipart/form-data
       description: Upload a resource to a bucket using multipart form file upload.
         The file hash (SHA-256) becomes the resource identifier for deduplication.
+        Optional headers with X-Webhook-Header- prefix will be forwarded to webhook
+        endpoints.
       parameters:
       - description: Bucket ID
         in: path
@@ -898,6 +900,10 @@ paths:
         name: file
         required: true
         type: file
+      - description: Optional headers to forward to webhooks (prefix stripped)
+        in: header
+        name: X-Webhook-Header-*
+        type: string
       produces:
       - application/json
       responses:
@@ -932,7 +938,8 @@ paths:
       - '*/*'
       description: Upload a resource to a bucket using request body stream. The file
         hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension
-        header to specify the file extension (e.g., ".jpg", ".log").
+        header to specify the file extension (e.g., ".jpg", ".log"). Optional headers
+        with X-Webhook-Header- prefix will be forwarded to webhook endpoints.
       parameters:
       - description: Bucket ID
         in: path
@@ -942,6 +949,10 @@ paths:
       - description: File extension (e.g., .jpg, .log)
         in: header
         name: X-File-Extension
+        type: string
+      - description: Optional headers to forward to webhooks (prefix stripped)
+        in: header
+        name: X-Webhook-Header-*
         type: string
       - description: File content
         format: binary

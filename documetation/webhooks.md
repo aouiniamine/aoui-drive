@@ -88,6 +88,64 @@ Every webhook request includes these headers:
 
 Custom headers configured per webhook are added to these defaults.
 
+## Request-Time Headers
+
+In addition to configured webhook headers, you can pass optional headers at upload time that will be forwarded to webhook endpoints. This is useful for passing context-specific information like correlation IDs, authentication tokens, or custom metadata.
+
+### How It Works
+
+When uploading a resource, include headers with the `X-Webhook-Header-` prefix. These headers will be:
+1. Extracted from the upload request
+2. Stripped of the `X-Webhook-Header-` prefix
+3. Included in the webhook HTTP request
+
+### Header Precedence
+
+Headers are applied in this order (later values override earlier ones):
+1. Default headers (`Content-Type`, `User-Agent`, `X-Webhook-Event`)
+2. Configured webhook headers (from database)
+3. Request-time headers (from `X-Webhook-Header-*`)
+
+### Examples
+
+#### Stream Upload with Custom Headers
+
+```bash
+curl -X PUT "https://api.example.com/resources/{bucket_id}" \
+  -H "Authorization: Bearer {your_token}" \
+  -H "Content-Type: image/png" \
+  -H "X-File-Extension: .png" \
+  -H "X-Webhook-Header-Authorization: Bearer external-service-token" \
+  -H "X-Webhook-Header-X-Correlation-Id: req-12345" \
+  -H "X-Webhook-Header-X-Source-System: my-app" \
+  --data-binary @image.png
+```
+
+The webhook request will include:
+```
+Authorization: Bearer external-service-token
+X-Correlation-Id: req-12345
+X-Source-System: my-app
+```
+
+#### Multipart Upload with Custom Headers
+
+```bash
+curl -X POST "https://api.example.com/resources/{bucket_id}" \
+  -H "Authorization: Bearer {your_token}" \
+  -H "X-Webhook-Header-X-Request-Id: abc-123" \
+  -F "file=@document.pdf"
+```
+
+### Use Cases
+
+| Use Case | Header Example |
+|----------|----------------|
+| Pass auth to external service | `X-Webhook-Header-Authorization: Bearer token` |
+| Request tracing/correlation | `X-Webhook-Header-X-Correlation-Id: trace-123` |
+| Source identification | `X-Webhook-Header-X-Source: mobile-app` |
+| Custom metadata | `X-Webhook-Header-X-User-Id: user-456` |
+
 ## REST API Endpoints
 
 All endpoints require Bearer token authentication.
@@ -167,12 +225,14 @@ Features:
 ### Resource Upload Flow
 
 ```
-1. Client uploads file to /resources/:bucketId
-2. ResourceService.UploadStream() processes upload
-3. On success, calls WebhookLauncher.TriggerEvent("resource.new", ...)
-4. WebhookService finds all active webhooks for bucket + event type
-5. For each webhook, spawns goroutine to send HTTP POST
-6. WebhookSender fetches headers and sends request
+1. Client uploads file to /resources/:bucketId (with optional X-Webhook-Header-* headers)
+2. Controller extracts X-Webhook-Header-* headers from request
+3. ResourceService.UploadStream() processes upload
+4. On success, calls WebhookLauncher.TriggerEvent("resource.new", ..., extraHeaders)
+5. WebhookService finds all active webhooks for bucket + event type
+6. For each webhook, spawns goroutine to send HTTP POST
+7. WebhookSender fetches configured headers and merges with extra headers
+8. HTTP request sent with all headers applied
 ```
 
 ### Resource Delete Flow

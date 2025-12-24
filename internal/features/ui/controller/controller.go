@@ -275,7 +275,7 @@ func (c *UIController) UploadResources(ctx echo.Context) error {
 	var errors []string
 
 	for _, file := range files {
-		_, err := c.resourceSvc.UploadFile(ctx.Request().Context(), clientID, bucketID, file)
+		_, err := c.resourceSvc.UploadFile(ctx.Request().Context(), clientID, bucketID, file, nil)
 		if err != nil {
 			errors = append(errors, file.Filename+": "+err.Error())
 		} else {

@@ -32,7 +32,8 @@ func NewWebhookSender(repo repository.WebhookRepository) *WebhookSender {
 }
 
 // SendWebhook sends a webhook to the specified URL with headers
-func (s *WebhookSender) SendWebhook(ctx context.Context, webhook *sqlc.WebhookUrl, payload string) error {
+// extraHeaders are optional headers passed at request time (e.g., from resource upload)
+func (s *WebhookSender) SendWebhook(ctx context.Context, webhook *sqlc.WebhookUrl, payload string, extraHeaders map[string]string) error {
 	// Get headers for this webhook
 	headers, err := s.repo.ListHeadersByURLID(ctx, webhook.ID)
 	if err != nil {
@@ -51,9 +52,14 @@ func (s *WebhookSender) SendWebhook(ctx context.Context, webhook *sqlc.WebhookUr
 	req.Header.Set("User-Agent", "AOUI-Drive-Webhook/1.0")
 	req.Header.Set("X-Webhook-Event", webhook.EventType)
 
-	// Add custom headers
+	// Add custom headers from webhook configuration
 	for _, h := range headers {
 		req.Header.Set(h.HeaderName, h.HeaderValue)
+	}
+
+	// Add extra headers passed at request time (these take precedence)
+	for name, value := range extraHeaders {
+		req.Header.Set(name, value)
 	}
 
 	// Send request

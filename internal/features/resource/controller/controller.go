@@ -31,6 +31,25 @@ func (c *ResourceController) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/:bucket/:hash", c.Delete)
 }
 
+const webhookHeaderPrefix = "X-Webhook-Header-"
+
+// extractWebhookHeaders extracts headers with the X-Webhook-Header- prefix
+// and returns them as a map with the prefix stripped
+func extractWebhookHeaders(ctx echo.Context) map[string]string {
+	headers := make(map[string]string)
+	for name, values := range ctx.Request().Header {
+		if strings.HasPrefix(name, webhookHeaderPrefix) && len(values) > 0 {
+			// Strip the prefix to get the actual header name
+			headerName := strings.TrimPrefix(name, webhookHeaderPrefix)
+			headers[headerName] = values[0]
+		}
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
+}
+
 // extractHash strips the file extension from the hash parameter if present
 // This allows URLs like /resources/{bucket}/{hash}.png to work
 func extractHash(hashParam string) string {
@@ -42,13 +61,14 @@ func extractHash(hashParam string) string {
 
 // UploadStream godoc
 // @Summary Upload resource via stream
-// @Description Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., ".jpg", ".log").
+// @Description Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., ".jpg", ".log"). Optional headers with X-Webhook-Header- prefix will be forwarded to webhook endpoints.
 // @Tags resources
 // @Accept */*
 // @Produce json
 // @Security BearerAuth
 // @Param bucket path string true "Bucket ID"
 // @Param X-File-Extension header string false "File extension (e.g., .jpg, .log)"
+// @Param X-Webhook-Header-* header string false "Optional headers to forward to webhooks (prefix stripped)"
 // @Param file body string true "File content" format(binary)
 // @Success 200 {object} response.Response{data=dto.ResourceResponse}
 // @Failure 400 {object} response.Response
@@ -65,8 +85,9 @@ func (c *ResourceController) UploadStream(ctx echo.Context) error {
 	}
 
 	extension := ctx.Request().Header.Get("X-File-Extension")
+	webhookHeaders := extractWebhookHeaders(ctx)
 
-	resource, err := c.service.UploadStream(ctx.Request().Context(), clientID, bucketID, contentType, extension, ctx.Request().Body)
+	resource, err := c.service.UploadStream(ctx.Request().Context(), clientID, bucketID, contentType, extension, ctx.Request().Body, webhookHeaders)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")
@@ -79,13 +100,14 @@ func (c *ResourceController) UploadStream(ctx echo.Context) error {
 
 // UploadFile godoc
 // @Summary Upload resource via multipart form
-// @Description Upload a resource to a bucket using multipart form file upload. The file hash (SHA-256) becomes the resource identifier for deduplication.
+// @Description Upload a resource to a bucket using multipart form file upload. The file hash (SHA-256) becomes the resource identifier for deduplication. Optional headers with X-Webhook-Header- prefix will be forwarded to webhook endpoints.
 // @Tags resources
 // @Accept multipart/form-data
 // @Produce json
 // @Security BearerAuth
 // @Param bucket path string true "Bucket ID"
 // @Param file formData file true "File to upload"
+// @Param X-Webhook-Header-* header string false "Optional headers to forward to webhooks (prefix stripped)"
 // @Success 200 {object} response.Response{data=dto.ResourceResponse}
 // @Failure 400 {object} response.Response
 // @Failure 401 {object} response.Response
@@ -100,7 +122,9 @@ func (c *ResourceController) UploadFile(ctx echo.Context) error {
 		return response.BadRequest(ctx, "file is required")
 	}
 
-	resource, err := c.service.UploadFile(ctx.Request().Context(), clientID, bucketID, file)
+	webhookHeaders := extractWebhookHeaders(ctx)
+
+	resource, err := c.service.UploadFile(ctx.Request().Context(), clientID, bucketID, file, webhookHeaders)
 	if err != nil {
 		if errors.Is(err, bucketrepo.ErrBucketNotFound) {
 			return response.NotFound(ctx, "bucket not found")

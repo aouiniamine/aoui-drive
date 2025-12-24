@@ -27,7 +27,7 @@ type WebhookService interface {
 	DeleteHeader(ctx context.Context, clientID, bucketID, webhookID, headerID string) error
 
 	// Event dispatching (called from resource service)
-	TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string) error
+	TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string, extraHeaders map[string]string) error
 }
 
 type webhookService struct {
@@ -377,7 +377,8 @@ func (s *webhookService) DeleteHeader(ctx context.Context, clientID, bucketID, w
 }
 
 // TriggerEvent sends webhooks directly to all active webhook URLs matching the event type
-func (s *webhookService) TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string) error {
+// extraHeaders are optional headers passed at request time that will be included in the webhook request
+func (s *webhookService) TriggerEvent(ctx context.Context, eventType string, bucket *sqlc.Bucket, resource *sqlc.Resource, resourceURL string, extraHeaders map[string]string) error {
 	webhooks, err := s.repo.ListActiveURLsByBucketAndEvent(ctx, bucket.ID, eventType)
 	if err != nil {
 		return err
@@ -411,7 +412,7 @@ func (s *webhookService) TriggerEvent(ctx context.Context, eventType string, buc
 	// Send webhook to each URL directly (fire and forget)
 	for _, webhook := range webhooks {
 		go func(w sqlc.WebhookUrl) {
-			s.sender.SendWebhook(ctx, &w, string(payloadJSON))
+			s.sender.SendWebhook(ctx, &w, string(payloadJSON), extraHeaders)
 		}(webhook)
 	}
 

@@ -9,10 +9,9 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "termsOfService": "http://swagger.io/terms/",
         "contact": {
-            "name": "API Support",
-            "email": "support@aoui-drive.io"
+            "name": "Amine M. Aouini",
+            "email": "amine.m.aouini@hotmail.com"
         },
         "license": {
             "name": "Apache 2.0",
@@ -1107,7 +1106,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., \".jpg\", \".log\").",
+                "description": "Upload a resource to a bucket using request body stream. The file hash (SHA-256) becomes the resource identifier for deduplication. Use X-File-Extension header to specify the file extension (e.g., \".jpg\", \".log\"). Optional headers with X-Webhook-Header- prefix will be forwarded to webhook endpoints.",
                 "consumes": [
                     "*/*"
                 ],
@@ -1130,6 +1129,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "File extension (e.g., .jpg, .log)",
                         "name": "X-File-Extension",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Optional headers to forward to webhooks (prefix stripped)",
+                        "name": "X-Webhook-Header-*",
                         "in": "header"
                     },
                     {
@@ -1188,7 +1193,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Upload a resource to a bucket using multipart form file upload. The file hash (SHA-256) becomes the resource identifier for deduplication.",
+                "description": "Upload a resource to a bucket using multipart form file upload. The file hash (SHA-256) becomes the resource identifier for deduplication. Optional headers with X-Webhook-Header- prefix will be forwarded to webhook endpoints.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -1213,6 +1218,12 @@ const docTemplate = `{
                         "name": "file",
                         "in": "formData",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Optional headers to forward to webhooks (prefix stripped)",
+                        "name": "X-Webhook-Header-*",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -1755,7 +1766,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "AOUI Drive API",
-	Description:      "MinIO-like Object Storage API",
+	Description:      "file and media hosting server with a web dashboard for bucket and resource management and RESTful API.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
